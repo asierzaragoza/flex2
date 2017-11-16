@@ -1,18 +1,89 @@
-outputName = None
+outputName = 'testPlot.blastn'
 
-blastResults = open(outputName + '.blastn', 'r')
+
+#Initialize variables
+
+nOfHits = 0
+
+minAln = 1000
+minIdentity = 90
+
+blastFamilies = []
+
+class BlastFamily():
+    def __init__(self, parentList):
+        self.parents = parentList
+        self.blastList = []
+
+    def addBlast(self, BlastHit):
+        if set(self.parents) == set(BlastHit.parents):
+            self.blastList.append(BlastHit)
+        else:
+            print('Hit does not pertain to this family')
+
+    def removeOwnHits(self):
+        cleanList = []
+        tupleList = []
+        for BlastHit in self.blastList:
+            for tuple in tupleList:
+                if set(BlastHit.seq1pos + BlastHit.seq2pos) == set(tuple):
+                    break
+            else:
+                cleanList.append(BlastHit)
+                tupleList.append((BlastHit.seq1pos + BlastHit.seq2pos))
+        self.blastList = cleanList
+
+    def _equalize(self):
+        for BlastHit in self.blastList:
+            if BlastHit.parents[0] != self.parents[0]:
+                seq2 = BlastHit.seq1pos
+                seq1 = BlastHit.seq2pos
+
+                BlastHit.parents = self.parents
+                BlastHit.seq1pos = seq2
+                BlastHit.seq2pos = seq1
+
+    def sortHits(self):
+        self.blastList.sort(key= lambda BlastHit : BlastHit.seq1pos)
+
+    def mergeBlasts(self):
+        self._equalize()
+        self.sortHits()
+        count = 0
+        for i in range(0, len(self.blastList)-1):
+            fstBlast = self.blastList[i]
+            scdBlast = self.blastList[i + 1]
+
+            pos1Dtce = abs(scdBlast.seq1pos[0] - fstBlast.seq1pos[1] + 0.1)
+            pos2Dtce = abs(scdBlast.seq2pos[0] - fstBlast.seq2pos[1] + 0.1)
+            dtceDiv = pos1Dtce/pos2Dtce
+            dtceSub = abs(int(pos1Dtce-pos2Dtce))
+            if dtceDiv > 0.76 and dtceDiv < 1.33 and dtceSub < 50:
+                count += 1
+                print(count)
+                print('\t',fstBlast.seq1pos, scdBlast.seq1pos)
+                print('\t',fstBlast.seq2pos, scdBlast.seq2pos)
+
+        print(count)
+
+
+
+
+
+
+
+
+
+
 
 
 class BlastHit():
     def __init__(self, line):
         blastLine = line.split('\t')
-        self.seq1 = blastLine[0]
-        self.seq1start = int(blastLine[6])
-        self.seq1end = int(blastLine[7])
+        self.parents = (blastLine[0], blastLine[1])
+        self.seq1pos = (int(blastLine[6]), int(blastLine[7]))
+        self.seq2pos = (int(blastLine[8]), int(blastLine[9]))
 
-        self.seq2 = blastLine[1]
-        self.seq2start = int(blastLine[8])
-        self.seq2end = int(blastLine[9])
 
         self.identity = float(blastLine[2])
         self.matchLen = int(blastLine[3])
@@ -29,21 +100,10 @@ class BlastHit():
         else:
             self.bitScore = float(blastLine[11])
 
-
-
-
-nOfHits = 0
-acceptedHits = []
-minAln = 1000
-minIdentity = 90
-
-
-
-
-
 #Basic filtering: self hits, min length, min identity
 def parseBlastFile(blastFile):
     with open(blastFile, 'r') as blastResults:
+        causeDict = {'Self Hits':0, 'Low identity':0, 'Small Match':0}
         nOfHits = 0
         acceptedHits = []
         for line in blastResults:
@@ -51,39 +111,88 @@ def parseBlastFile(blastFile):
             print('procesing hit nº', nOfHits)
             newHit = BlastHit(line)
             # Remove self-hits
-            if newHit.seq1 == newHit.seq2:
-                print('\Self hit, removed')
+            if newHit.parents[0] == newHit.parents[1]:
+                print('\tSelf hit, removed')
+                causeDict['Self Hits'] += 1
                 continue
             # Remove low identity hits
             elif newHit.identity < minIdentity:
-                print('\tLow identity, removed')
+                print('\tLow identity, removed:', minIdentity, '>', newHit.identity)
+                causeDict['Low identity'] += 1
                 continue
             # Remove small hits
             elif newHit.matchLen < minAln:
                 print('\tSmall alignment, removed:', minAln, '>', newHit.matchLen)
+                causeDict['Small Match'] += 1
                 continue
             else:
                 print('\tGood hit')
                 acceptedHits.append(newHit)
+        print(causeDict['Self Hits'], 'self hits removed,', causeDict['Low identity'], 'low identity,', causeDict['Small Match'], 'small matches')
+        print(len(acceptedHits), 'hits accepted')
         return acceptedHits
 
-    # Delete duplicate entries (duplicate entries are detected by adding all nt positions and comparing the result.
-    # Adding only 2 numbers seems to work as well, but 4 filters more) - tests look fine, but it will need more testing
-    # todo - this step is really slow (you end up with 3-4k+ comparisons per new hit). maybe implement binary search?
-    '''
-    elif len(acceptedHits) > 0:
-        for hit in acceptedHits:
-            hitChunks = hit.split('\t')
-            print(acceptedHits.index(hit)+1)
-            if (int(hitChunks[6]) + int(hitChunks[7]) + int(hitChunks[8]) + int(hitChunks[9])) ==  (int(lineChunks[6]) + int(lineChunks[7]) + int(lineChunks[8]) + int(lineChunks[9])):
-                print('\tHit already in file, removed')
-                break
-            elif (acceptedHits.index(hit)+1) == len(acceptedHits):
-                print('\tGood hit')
-                acceptedHits.append(line)
-                break
-    '''
+
+def groupHits(blastList):
+    blastFamilies = []
+    blastParents = []
+    for BlastHit in blastList:
+        if len(blastFamilies) == 0:
+            newFamily = BlastFamily(BlastHit.parents)
+            newFamily.addBlast(BlastHit)
+            blastParents.append(BlastHit.parents)
+            blastFamilies.append(newFamily)
+        else:
+            for parent in blastParents:
+                if set(BlastHit.parents) == set(parent):
+                    blastFamilies[blastParents.index(parent)].addBlast(BlastHit)
+                    break
+            else:
+                print('parents', BlastHit.parents, 'not found in', blastParents)
+                newFamily = BlastFamily(BlastHit.parents)
+                newFamily.addBlast(BlastHit)
+                blastParents.append(BlastHit.parents)
+                blastFamilies.append(newFamily)
+
+    return blastFamilies
+
+
+
+
+
+
+acceptedHits = parseBlastFile(outputName)
+blastFamilies = groupHits(acceptedHits)
+
+
+for family in blastFamilies:
+    print()
+    print('parents', family.parents, len(family.blastList))
+    family.removeOwnHits()
+    print(len(family.blastList))
+
+testFamily = blastFamilies[0]
+testFamily.mergeBlasts()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 print('Done')
 
-blastResults.close()
