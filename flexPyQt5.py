@@ -1,5 +1,6 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, QOpenGLWidget
+import PyQt5.QtOpenGL as QtOpenGl
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 
@@ -45,7 +46,7 @@ def parseOldBlastFile(filename, genomeScene):
                     genomeScene.createBlastPoly(chrom1, chrom2, int(blastLine[6]),int(blastLine[7]),int(blastLine[8]), int(blastLine[9]))
                     skip = True
             total += 1
-            if total > 750:
+            if total > 2000:
                 break
 
 
@@ -54,6 +55,18 @@ def parseOldBlastFile(filename, genomeScene):
 class GenomeScene(QGraphicsScene):
     def __init__(self):
         super().__init__()
+
+        #marginRect = self.sceneRect().adjusted(-25000, -25000, 25000, 25000)
+        #self.addRect(marginRect)
+        #self.sceneRect()
+
+        #self.setSceneRect(-25000, -25000, 25000, 25000)
+
+        '''
+        auto marginRect = addRect(sceneRect().adjusted(-25000, -25000, 25000, 25000));
+        sceneRect(); // hack to force update of scene bounding box
+        delete marginRect;
+        '''
         self.chrList = []
 
     def createChromosome(self, w, name):
@@ -86,6 +99,11 @@ class GenomeViewer(QGraphicsView):
         super().__init__(scene)
 
 
+        #self.setViewport(QOpenGLWidget(flags=self.windowFlags()))
+
+        self.update()
+
+
     def wheelEvent(self, QWheelEvent):
         self.setTransformationAnchor(QGraphicsView.NoAnchor)
         self.setResizeAnchor(QGraphicsView.NoAnchor)
@@ -103,6 +121,9 @@ class GenomeViewer(QGraphicsView):
         newPos = self.mapToScene(QWheelEvent.pos())
         delta = newPos - oldPos
         self.translate(delta.x(), delta.y())
+
+
+
 
 
 class Chromosome(QGraphicsRectItem):
@@ -176,11 +197,9 @@ class CDS(QGraphicsRectItem):
         self.parent.mouseMoveEvent(QGraphicsSceneMouseEvent)
 
     def hoverEnterEvent(self, QGraphicsSceneHoverEvent):
-        print('HI')
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkYellow))
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
-        print('BYE')
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
 
 
@@ -206,6 +225,7 @@ class BlastPolygon(QGraphicsPolygonItem):
 
 
     def calculatePolygon(self):
+
         point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, (self.chrom1.pos().y() + (self.chrom1.h)))
         point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, (self.chrom2.pos().y() + (self.chrom2.h * 2)))
         point3 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2start, (self.chrom2.pos().y() + (self.chrom2.h * 2)))

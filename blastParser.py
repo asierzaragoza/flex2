@@ -1,4 +1,4 @@
-outputName = 'testPlot.blastn'
+outputName = 'M1627-M1630.plot.blastn.clean'
 
 
 #Initialize variables
@@ -49,22 +49,27 @@ class BlastFamily():
     def mergeBlasts(self):
         self._equalize()
         self.sortHits()
+        mergeCandidates = []
         count = 0
         for i in range(0, len(self.blastList)-1):
             fstBlast = self.blastList[i]
             scdBlast = self.blastList[i + 1]
+            subThreshold = [1000, 0.76, 1.33]
 
             pos1Dtce = abs(scdBlast.seq1pos[0] - fstBlast.seq1pos[1] + 0.1)
             pos2Dtce = abs(scdBlast.seq2pos[0] - fstBlast.seq2pos[1] + 0.1)
             dtceDiv = pos1Dtce/pos2Dtce
-            dtceSub = abs(int(pos1Dtce-pos2Dtce))
-            if dtceDiv > 0.76 and dtceDiv < 1.33 and dtceSub < 50:
+            dtceSub = int(pos1Dtce+pos2Dtce) < subThreshold[0] and pos1Dtce < subThreshold[0]/2 and pos2Dtce < subThreshold[0]/2
+            if dtceDiv > subThreshold[1] and dtceDiv < subThreshold[2] and dtceSub:
                 count += 1
-                print(count)
-                print('\t',fstBlast.seq1pos, scdBlast.seq1pos)
-                print('\t',fstBlast.seq2pos, scdBlast.seq2pos)
+                mergeCandidates.append([fstBlast, scdBlast])
 
-        print(count)
+        print(count,'/', len(self.blastList), 'candidates to merge')
+
+        curatedMergeList = []
+
+        for i in range(0, len(self.blastList)-1):
+            pass
 
 
 
@@ -169,10 +174,11 @@ for family in blastFamilies:
     print()
     print('parents', family.parents, len(family.blastList))
     family.removeOwnHits()
-    print(len(family.blastList))
+    print('len after removing duplicates', len(family.blastList))
+    family.mergeBlasts()
 
-testFamily = blastFamilies[0]
-testFamily.mergeBlasts()
+#testFamily = blastFamilies[0]
+#testFamily.mergeBlasts()
 
 
 
