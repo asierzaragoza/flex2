@@ -25,7 +25,7 @@ def parseOldGenomeFile(filename, genomeScene):
 
                 #pass
             else:
-                print('line not processed')
+                #print('line not processed')
                 pass
 
 def parseOldBlastFile(filename, genomeScene):
@@ -46,31 +46,39 @@ def parseOldBlastFile(filename, genomeScene):
                     genomeScene.createBlastPoly(chrom1, chrom2, int(blastLine[6]),int(blastLine[7]),int(blastLine[8]), int(blastLine[9]))
                     skip = True
             total += 1
-            if total > 2000:
+            if total > 5000:
                 break
 
 
+
+class GLWidget(QOpenGLWidget):
+    def __init__(self, parent, flags):
+        super().__init__(parent, flags)
+
+    def initializeGL(self):
+        c = self.context()
+        f = QtGui.QSurfaceFormat()  # The default
+        p = QtGui.QOpenGLVersionProfile(f)
+        self.GL = c.versionFunctions(p)
+        super().initializeGL()
+        self.setFixedSize(1500, 600)
+
+    def paintEvent(self, QPaintEvent):
+        painter = QtGui.QPainter()
+        painter.begin(self)
+        painter.end()
 
 
 class GenomeScene(QGraphicsScene):
     def __init__(self):
         super().__init__()
-
-        #marginRect = self.sceneRect().adjusted(-25000, -25000, 25000, 25000)
-        #self.addRect(marginRect)
-        #self.sceneRect()
-
-        #self.setSceneRect(-25000, -25000, 25000, 25000)
-
-        '''
-        auto marginRect = addRect(sceneRect().adjusted(-25000, -25000, 25000, 25000));
-        sceneRect(); // hack to force update of scene bounding box
-        delete marginRect;
-        '''
+        self.setMinimumRenderSize(1.0)
+        #Removing the index improves performance significantly
+        self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.chrList = []
 
     def createChromosome(self, w, name):
-        print(w)
+        #print(w)
         if len(self.chrList) > 0:
             self.chrList.sort(key = lambda Chromosome: Chromosome.scenePos().y())
             chr = Chromosome(200, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
@@ -98,9 +106,8 @@ class GenomeViewer(QGraphicsView):
     def __init__(self, scene):
         super().__init__(scene)
 
-
-        #self.setViewport(QOpenGLWidget(flags=self.windowFlags()))
-
+        #OpenGL support is a can of worms I'd prefer not to open
+        #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
         self.update()
 
 
@@ -163,7 +170,7 @@ class Chromosome(QGraphicsRectItem):
                 cds.moveCDS(xdiff, ydiff)
 
     def createGene(self, w, pos, name):
-        print(pos, (pos+w) )
+        #print(pos, (pos+w) )
         cds = CDS(self, w, pos, name)
         self.geneList.append(cds)
         self.scene().addItem(cds)
