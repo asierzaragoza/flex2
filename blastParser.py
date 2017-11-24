@@ -5,7 +5,7 @@ outputName = 'M1627-M1630.plot.blastn.clean'
 
 nOfHits = 0
 
-minAln = 1000
+minAln = 1250
 minIdentity = 90
 
 blastFamilies = []
@@ -54,7 +54,9 @@ class BlastFamily():
         for i in range(0, len(self.blastList)-1):
             fstBlast = self.blastList[i]
             scdBlast = self.blastList[i + 1]
-            subThreshold = [1000, 0.76, 1.33]
+            #subThreshold = [1000, 0.76, 1.33]
+            #subThreshold = [500, 0.80, 1.20]
+            subThreshold = [1500, 0.60, 1.50]
 
             pos1Dtce = abs(scdBlast.seq1pos[0] - fstBlast.seq1pos[1] + 0.1)
             pos2Dtce = abs(scdBlast.seq2pos[0] - fstBlast.seq2pos[1] + 0.1)
@@ -66,15 +68,57 @@ class BlastFamily():
 
         print(count,'/', len(self.blastList), 'candidates to merge')
 
-        curatedMergeList = []
+        curatedNonMergeList = []
+        for blastHit in self.blastList:
+            foundHit = False
+            for list in mergeCandidates:
+                if blastHit in list:
+                    foundHit = True
+                    break
 
-        for i in range(0, len(self.blastList)-1):
-            pass
+            if foundHit == False:
+                curatedNonMergeList.append(blastHit)
+
+        print('not merged blasts:', len(curatedNonMergeList))
+        print(len(mergeCandidates))
+        #Remove concatenated merges
+        i = 0
+        while i < len(mergeCandidates)-1:
+            if mergeCandidates[i][-1] == mergeCandidates[i+1][0]:
+                #print('Found')
+                newList = [mergeCandidates[i][0], mergeCandidates[i+1][1]]
+                mergeCandidates[i] = newList
+                mergeCandidates.pop(i+1)
+                i = 0
+                continue
+            else:
+                i += 1
+
+        print(len(mergeCandidates))
+        finalCandidateList = []
+        for candidates in mergeCandidates:
+            gaps = str(candidates[0].gaps + candidates[1].gaps)
+            mismatches = str(candidates[0].mismatches + candidates[1].mismatches + (candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
+            matchLen = str(candidates[0].matchLen + candidates[1].matchLen + (candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
+            identity = str((candidates[0].identity + candidates[1].identity)/2)
+            line = candidates[0].parents[0] + '\t' + candidates[0].parents[1] + '\t' + identity + '\t' + matchLen + '\t' + mismatches + '\t' + str(gaps)+ '\t'
+            line2 = str(candidates[0].seq1pos[0]) + '\t' + str(candidates[1].seq1pos[1]) + '\t' + str(candidates[0].seq2pos[0]) + '\t' + str(candidates[1].seq2pos[1]) + '\t' + '0' + '\t' +'0\n'
+
+            newBlastHit = BlastHit(line+line2)
+            finalCandidateList.append(newBlastHit)
 
 
+        newList = finalCandidateList + curatedNonMergeList
+        self.blastList = newList
+        self.sortHits()
 
+        print(len(self.blastList))
 
-
+    def printHits(self, filehandle):
+        for blastHit in self.blastList:
+            line1 = blastHit.parents[0] + '\t' + blastHit.parents[1] + '\t' + '%.2f'%(blastHit.identity) + '\t' + str(blastHit.matchLen) + '\t' + str(blastHit.mismatches) + '\t' + str(blastHit.gaps) + '\t'
+            line2 = str(blastHit.seq1pos[0]) + '\t' + str(blastHit.seq1pos[1]) + '\t' + str(blastHit.seq2pos[0]) + '\t' + str(blastHit.seq2pos[1]) + '\t' + '0' + '\t' + '0\n'
+            filehandle.write(line1+line2)
 
 
 
@@ -89,7 +133,8 @@ class BlastHit():
         self.seq1pos = (int(blastLine[6]), int(blastLine[7]))
         self.seq2pos = (int(blastLine[8]), int(blastLine[9]))
 
-
+        self.mismatches = int(blastLine[4])
+        self.gaps = int(blastLine[5])
         self.identity = float(blastLine[2])
         self.matchLen = int(blastLine[3])
         self.bitScore = None
@@ -168,17 +213,15 @@ def groupHits(blastList):
 
 acceptedHits = parseBlastFile(outputName)
 blastFamilies = groupHits(acceptedHits)
+with open('test.blastn', 'w') as filehandle:
+    for family in blastFamilies:
+        print()
+        print('parents', family.parents, len(family.blastList))
+        family.removeOwnHits()
+        print('len after removing duplicates', len(family.blastList))
+        family.mergeBlasts()
+        #family.printHits(filehandle)
 
-
-for family in blastFamilies:
-    print()
-    print('parents', family.parents, len(family.blastList))
-    family.removeOwnHits()
-    print('len after removing duplicates', len(family.blastList))
-    family.mergeBlasts()
-
-#testFamily = blastFamilies[0]
-#testFamily.mergeBlasts()
 
 
 
