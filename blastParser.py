@@ -98,8 +98,8 @@ class BlastFamily():
         finalCandidateList = []
         for candidates in mergeCandidates:
             gaps = str(candidates[0].gaps + candidates[1].gaps)
-            mismatches = str(candidates[0].mismatches + candidates[1].mismatches + (candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
-            matchLen = str(candidates[0].matchLen + candidates[1].matchLen + (candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
+            mismatches = str(candidates[0].mismatches + candidates[1].mismatches + abs(candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
+            matchLen = str(candidates[0].matchLen + candidates[1].matchLen + abs(candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
             identity = str((candidates[0].identity + candidates[1].identity)/2)
             line = candidates[0].parents[0] + '\t' + candidates[0].parents[1] + '\t' + identity + '\t' + matchLen + '\t' + mismatches + '\t' + str(gaps)+ '\t'
             line2 = str(candidates[0].seq1pos[0]) + '\t' + str(candidates[1].seq1pos[1]) + '\t' + str(candidates[0].seq2pos[0]) + '\t' + str(candidates[1].seq2pos[1]) + '\t' + '0' + '\t' +'0\n'
@@ -120,7 +120,14 @@ class BlastFamily():
             line2 = str(blastHit.seq1pos[0]) + '\t' + str(blastHit.seq1pos[1]) + '\t' + str(blastHit.seq2pos[0]) + '\t' + str(blastHit.seq2pos[1]) + '\t' + '0' + '\t' + '0\n'
             filehandle.write(line1+line2)
 
+    def diagnose(self):
+        for i in range(0, len(self.blastList)-1):
+            currHit = self.blastList[i]
+            nextHit = self.blastList[i+1]
 
+            print(i, '-', (i+1), 'Statistics')
+            print('\tDistance between hits:', 'Seq1', nextHit.seq1pos[0] - currHit.seq1pos[1])
+            print('\tDistance between hits:', 'Seq2', nextHit.seq2pos[0] - currHit.seq2pos[1])
 
 
 
@@ -213,13 +220,15 @@ def groupHits(blastList):
 
 acceptedHits = parseBlastFile(outputName)
 blastFamilies = groupHits(acceptedHits)
-with open('test.blastn', 'w') as filehandle:
+with open('test2.blastn', 'w') as filehandle:
     for family in blastFamilies:
         print()
         print('parents', family.parents, len(family.blastList))
         family.removeOwnHits()
         print('len after removing duplicates', len(family.blastList))
         family.mergeBlasts()
+        family.diagnose()
+
         #family.printHits(filehandle)
 
 
