@@ -93,9 +93,9 @@ class GenomeScene(QGraphicsScene):
         #print(w)
         if len(self.chrList) > 0:
             self.chrList.sort(key = lambda Chromosome: Chromosome.scenePos().y())
-            chr = Chromosome(200, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
+            chr = Chromosome(7000000/10, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
         else:
-            chr = Chromosome(200, 100, w, name)
+            chr = Chromosome(7000000/10, 100, w, name)
         self.chrList.append(chr)
         self.addItem(chr)
         return chr
@@ -276,21 +276,22 @@ class ExampleWidget(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setGeometry(0, 0, 1980, 1080)
+        self.setGeometry(0, 0, 300, 200)
 
         self.scene = GenomeScene()
         view = GenomeViewer(self.scene)
         parseOldGenomeFile('M1627-M1630.plot', self.scene)
         #parseOldBlastFile('blastresults8.blastn', self.graph)
 
-        self.scene.setSceneRect(0, 0, 3500000, 3500000)
+        self.scene.setSceneRect(0, 0, 7000000, 3500000)
         #view.setSceneRect(0, 0, 1920, 1080)
         view.fitInView(self.scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
-        view.setDragMode(QGraphicsView.ScrollHandDrag)
+        #view.setDragMode(QGraphicsView.ScrollHandDrag)
 
         #Maximize the window (Qt Keywords (like Qt::WindoMaximized) are in the PyQt5.QtCore module
         self.setWindowState(QtCore.Qt.WindowMaximized)
 
+        #Menu stuff
         openPlot = QAction('&Load Plot File', self)
         openPlot.triggered.connect(self.showPlotDialog)
 
