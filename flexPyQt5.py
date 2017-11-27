@@ -1,10 +1,10 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, QOpenGLWidget
-import PyQt5.QtOpenGL as QtOpenGl
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, QOpenGLWidget, QMenuBar, QAction, QFileDialog
+
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 
-
+#I/O FUNCTIONS
 def parseOldGenomeFile(filename, genomeScene):
     with open(filename) as inputFile:
         for line in inputFile:
@@ -23,31 +23,41 @@ def parseOldGenomeFile(filename, genomeScene):
                 chr = genomeScene.findChromosomeByName(cdsLine[0])
                 chr.createGene((int(cdsLine[4])-int(cdsLine[3])), int(cdsLine[3]), cdsLine[1])
 
-                #pass
-            else:
-                #print('line not processed')
                 pass
+            else:
+                print('line not processed')
+                pass
+
+
+def parseGenomeFile(filename, genomeScene):
+    with open(filename) as inputFile:
+        for line in inputFile:
+            if line[0] == '#':
+                pass
+            elif line[0:9] == 'sequences':
+                seqLine = line.split(':')[1]
+                seqLine2 = seqLine.split(';')
+                for sequence in seqLine2:
+                    pass
+
 
 def parseOldBlastFile(filename, genomeScene):
     with open(filename) as inputFile:
         total = 0
-        skip = False
+
         for line in inputFile:
             if line[0] == '#':
                 pass
             elif len(line.split('\t')) == 12:
-                if skip == True:
-                    skip = False
-                    pass
-                else:
-                    blastLine = line.split('\t')
-                    chrom1 = genomeScene.findChromosomeByName(blastLine[0])
-                    chrom2 = genomeScene.findChromosomeByName(blastLine[1])
-                    genomeScene.createBlastPoly(chrom1, chrom2, int(blastLine[6]),int(blastLine[7]),int(blastLine[8]), int(blastLine[9]))
-                    skip = True
+
+                blastLine = line.split('\t')
+                chrom1 = genomeScene.findChromosomeByName(blastLine[0])
+                chrom2 = genomeScene.findChromosomeByName(blastLine[1])
+                genomeScene.createBlastPoly(chrom1, chrom2, int(blastLine[6]),int(blastLine[7]),int(blastLine[8]), int(blastLine[9]))
+
             total += 1
-            if total > 5000:
-                break
+            #if total > 10000:
+                #break
 
 
 
@@ -73,9 +83,11 @@ class GenomeScene(QGraphicsScene):
     def __init__(self):
         super().__init__()
         self.setMinimumRenderSize(1.0)
+
         #Removing the index improves performance significantly
         self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.chrList = []
+        self.blastList = []
 
     def createChromosome(self, w, name):
         #print(w)
@@ -90,6 +102,7 @@ class GenomeScene(QGraphicsScene):
 
     def createBlastPoly(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end):
         blastPoly = BlastPolygon(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end)
+        self.blastList.append(blastPoly)
         self.addItem(blastPoly)
 
     def findChromosomeByName(self, name):
@@ -108,7 +121,6 @@ class GenomeViewer(QGraphicsView):
 
         #OpenGL support is a can of worms I'd prefer not to open
         #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
-        self.update()
 
 
     def wheelEvent(self, QWheelEvent):
@@ -135,7 +147,7 @@ class GenomeViewer(QGraphicsView):
 
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, name):
-        self.h = 24000
+        self.h = 12000
         self.w = (w*2)
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
@@ -146,6 +158,7 @@ class Chromosome(QGraphicsRectItem):
         self.blastList = []
         self.name = name
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGray))
+        self.setZValue(2.0)
 
     def mousePressEvent(self, QGraphicsSceneMouseEvent):
         self.dragged = True
@@ -190,6 +203,7 @@ class CDS(QGraphicsRectItem):
         self.name = name
         self.setAcceptHoverEvents(True)
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+        self.setZValue(3.0)
 
     def moveCDS(self, xdiff, ydiff):
         self.setPos(QtCore.QPoint(self.pos().x() + xdiff, self.pos().y() + ydiff))
@@ -205,6 +219,8 @@ class CDS(QGraphicsRectItem):
 
     def hoverEnterEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkYellow))
+        self.setToolTip((self.name+ ' ' + str(self.w)))
+
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
@@ -229,6 +245,8 @@ class BlastPolygon(QGraphicsPolygonItem):
 
         super().__init__(polygon)
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkRed))
+        self.setAcceptHoverEvents(True)
+        self.setZValue(1.0)
 
 
     def calculatePolygon(self):
@@ -239,6 +257,13 @@ class BlastPolygon(QGraphicsPolygonItem):
         point4 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1start, (self.chrom1.pos().y() + (self.chrom1.h)))
         polygon = QtGui.QPolygonF((point1, point2, point3, point4))
         self.setPolygon(polygon)
+
+    def hoverEnterEvent(self, QGraphicsSceneHoverEvent):
+        self.setBrush(QtGui.QBrush(QtCore.Qt.darkYellow))
+        self.setToolTip((self.chrom1.name + ' '))
+
+    def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
+        self.setBrush(QtGui.QBrush(QtCore.Qt.darkRed))
 
 
 
@@ -251,25 +276,46 @@ class ExampleWidget(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setGeometry(300, 300, 300, 220)
+        self.setGeometry(0, 0, 1980, 1080)
 
-        self.graph = GenomeScene()
-        parseOldGenomeFile('AB030-B8300.plot', self.graph)
-        parseOldBlastFile('AB030-B8300.plot.blastn.clean', self.graph)
+        self.scene = GenomeScene()
+        view = GenomeViewer(self.scene)
+        parseOldGenomeFile('M1627-M1630.plot', self.scene)
+        #parseOldBlastFile('blastresults8.blastn', self.graph)
 
+        self.scene.setSceneRect(0, 0, 3500000, 3500000)
+        #view.setSceneRect(0, 0, 1920, 1080)
+        view.fitInView(self.scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        view.setDragMode(QGraphicsView.ScrollHandDrag)
 
-
-
-
-        view = GenomeViewer(self.graph)
         #Maximize the window (Qt Keywords (like Qt::WindoMaximized) are in the PyQt5.QtCore module
         self.setWindowState(QtCore.Qt.WindowMaximized)
 
+        openPlot = QAction('&Load Plot File', self)
+        openPlot.triggered.connect(self.showPlotDialog)
+
+        openBlast = QAction('&Load Blast File', self)
+        openBlast.triggered.connect(self.showBlastDialog)
+
+        deleteBlast = QAction('&Delete Blasts', self)
+        deleteBlast.triggered.connect(self.deleteBlasts)
+
+        menuBar = QMenuBar()
+        fileMenu = menuBar.addMenu('&File')
+        fileMenu.addAction(openPlot)
+        fileMenu.addAction(openBlast)
+        fileMenu.addAction(deleteBlast)
+
+
+
+
+
         layVBox = QVBoxLayout()
+        layVBox.addWidget(menuBar)
         layVBox.addWidget(view)
         self.setLayout(layVBox)
 
-        self.setWindowTitle('Test')
+        self.setWindowTitle('Flex2')
         self.center()
         self.show()
 
@@ -280,7 +326,19 @@ class ExampleWidget(QWidget):
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
+    def showBlastDialog(self):
+        blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', '/home')
+        if blastHandle[0]:
+            parseOldBlastFile(blastHandle[0], self.graph)
 
+    def showPlotDialog(self):
+        plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', '/home')
+        if plotHandle[0]:
+            parseOldGenomeFile(plotHandle[0], self.graph)
+
+    def deleteBlasts(self):
+        for blast in self.graph.blastList:
+            self.graph.removeItem(blast)
 
 
 
