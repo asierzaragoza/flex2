@@ -15,6 +15,9 @@ class BlastFamily():
         self.parents = parentList
         self.blastList = []
 
+    def __iter__(self):
+        return iter(self.blastList)
+
     def addBlast(self, BlastHit):
         if set(self.parents) == set(BlastHit.parents):
             self.blastList.append(BlastHit)

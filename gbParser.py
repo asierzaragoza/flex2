@@ -66,16 +66,9 @@ class Fosmid():
             try:
                 if gene.qualifiers['locus_tag'] == cds.qualifiers['locus_tag']:
                     return True
-            except(KeyError) as e:
-                #print(str(e))
+            except(KeyError):
                 return False
-
         return False
-
-
-
-
-
 
 
 
@@ -132,9 +125,9 @@ for gbRecord in gbFiles:
 
     print(len(newFosmid.features))
 
-    for feat in newFosmid.features:
-        if feat.type == 'gene':
-            print(feat.qualifiers)
+
+
+
 
 
     '''

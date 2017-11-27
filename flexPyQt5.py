@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
-    QMainWindow, QMenuBar, QAction, QFileDialog,QTableWidget
+    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
@@ -310,6 +310,30 @@ class BlastFamilyWidget(QWidget):
         self.blastTable = QTableWidget()
         self.blastTable.setRowCount(len(self.blastList))
         self.blastTable.setColumnCount(4)
+        for i in range(0, len(self.blastList)):
+            indexCell = QTableWidgetItem(str(i+1))
+            parent1Cell = QTableWidgetItem(self.blastList[0].parents[0])
+            parent2Cell = QTableWidgetItem(self.blastList[0].parents[1])
+            visibleCell = QCheckBox(self.blastTable)
+            visibleCell.setTristate(False)
+            self.blastTable.setCellWidget(i, 3, visibleCell)
+
+
+            if self.blastList[0].blastPolyList[0].isVisible() == True:
+                visibleCell.setCheckState(QtCore.Qt.Checked)
+            else:
+                visibleCell.setCheckState(QtCore.Qt.Unchecked)
+            self.blastTable.setItem(i, 0, indexCell)
+            self.blastTable.setItem(i, 1, parent1Cell)
+            self.blastTable.setItem(i, 2, parent2Cell)
+
+
+        layVBox = QVBoxLayout()
+        layVBox.addWidget(self.blastTable)
+        self.setLayout(layVBox)
+        self.show()
+
+
 
 
 
