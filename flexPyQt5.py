@@ -1,8 +1,10 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, QOpenGLWidget, QMenuBar, QAction, QFileDialog
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
+    QMainWindow, QMenuBar, QAction, QFileDialog,QTableWidget
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
+import blastParser
 
 #I/O FUNCTIONS
 def parseOldGenomeFile(filename, genomeScene):
@@ -41,6 +43,21 @@ def parseGenomeFile(filename, genomeScene):
                     pass
 
 
+def parseBlastFile(filename, genomeScene):
+    newHits = blastParser.parseBlastFile(filename)
+    families = blastParser.groupHits(newHits)
+    for family in families:
+        family._equalize()
+        newFamily = BlastFamily(family.parents, genomeScene)
+
+        family.genomeScene = genomeScene
+        for BlastHit in family:
+            newFamily.createPoly(BlastHit)
+        genomeScene.blastFamilies.append(newFamily)
+        genomeScene.findChromosomeByName(family.parents[0]).blastList.append(newFamily)
+        genomeScene.findChromosomeByName(family.parents[1]).blastList.append(newFamily)
+
+
 def parseOldBlastFile(filename, genomeScene):
     with open(filename) as inputFile:
         total = 0
@@ -61,24 +78,7 @@ def parseOldBlastFile(filename, genomeScene):
 
 
 
-class GLWidget(QOpenGLWidget):
-    def __init__(self, parent, flags):
-        super().__init__(parent, flags)
-
-    def initializeGL(self):
-        c = self.context()
-        f = QtGui.QSurfaceFormat()  # The default
-        p = QtGui.QOpenGLVersionProfile(f)
-        self.GL = c.versionFunctions(p)
-        super().initializeGL()
-        self.setFixedSize(1500, 600)
-
-    def paintEvent(self, QPaintEvent):
-        painter = QtGui.QPainter()
-        painter.begin(self)
-        painter.end()
-
-
+#CLASS OBJECTS
 class GenomeScene(QGraphicsScene):
     def __init__(self):
         super().__init__()
@@ -121,13 +121,12 @@ class GenomeViewer(QGraphicsView):
         #OpenGL support is a can of worms I'd prefer not to open
         #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
 
-
     def wheelEvent(self, QWheelEvent):
+        #I copypasted this from stackOverflow, but I should recode it so it uses scaleFactor
         self.setTransformationAnchor(QGraphicsView.NoAnchor)
         self.setResizeAnchor(QGraphicsView.NoAnchor)
         zoomInFactor = 1.25
         zoomOutFactor = 1/zoomInFactor
-
         oldPos = self.mapToScene(QWheelEvent.pos())
 
         if QWheelEvent.angleDelta().y() > 0:
@@ -139,9 +138,6 @@ class GenomeViewer(QGraphicsView):
         newPos = self.mapToScene(QWheelEvent.pos())
         delta = newPos - oldPos
         self.translate(delta.x(), delta.y())
-
-
-
 
 
 class Chromosome(QGraphicsRectItem):
@@ -162,10 +158,8 @@ class Chromosome(QGraphicsRectItem):
     def mousePressEvent(self, QGraphicsSceneMouseEvent):
         self.dragged = True
 
-
     def mouseReleaseEvent(self, QGraphicsSceneMouseEvent):
         self.dragged = False
-
 
     def mouseMoveEvent(self, QGraphicsSceneMouseEvent):
         if self.dragged == True:
@@ -175,8 +169,8 @@ class Chromosome(QGraphicsRectItem):
             chromosomeX = self.pos().x() + xdiff
             chromosomeY = self.pos().y() + ydiff
             self.setPos(QtCore.QPoint(chromosomeX, chromosomeY))
-            for blastPoly in self.blastList:
-                blastPoly.calculatePolygon()
+            for blastFamily in self.blastList:
+                blastFamily.updatePolyPos()
 
             for cds in self.geneList:
                 cds.moveCDS(xdiff, ydiff)
@@ -219,9 +213,38 @@ class CDS(QGraphicsRectItem):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkYellow))
         self.setToolTip((self.name+ ' ' + str(self.w)))
 
-
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+
+class BlastFamily:
+    def __init__(self, parents, genomeScene):
+        self.parents = parents
+        self.genomeScene = genomeScene
+        self.blastPolyList = []
+
+    def createPoly(self, BlastHit):
+        blastPoly = BlastPolygon(self.genomeScene.findChromosomeByName(BlastHit.parents[0]), self.genomeScene.findChromosomeByName(BlastHit.parents[1]),
+                                 BlastHit.seq1pos[0], BlastHit.seq1pos[1], BlastHit.seq2pos[0], BlastHit.seq2pos[1])
+        self.blastPolyList.append(blastPoly)
+        self.genomeScene.addItem(blastPoly)
+
+    def setBlastVisibility(self, bool):
+        for blastPoly in self.blastPolyList:
+            blastPoly.setVisible(bool)
+
+    def updatePolyPos(self):
+        for blastPoly in self.blastPolyList:
+            blastPoly.calculatePolygon()
+
+    def deleteFamily(self):
+        for blastPoly in self.blastPolyList:
+            self.genomeScene.removeItem(blastPoly)
+            del blastPoly
+        self.genomeScene.findChromosomeByName(self.parents[0]).blastList.remove(self)
+        self.genomeScene.findChromosomeByName(self.parents[1]).blastList.remove(self)
+        self.genomeScene.blastFamilies.remove(self)
+        del self
+
 
 
 class BlastPolygon(QGraphicsPolygonItem):
@@ -231,9 +254,8 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.pos2start = pos2start * 2
         self.pos2end = pos2end * 2
         self.chrom1 = chrom1
-        self.chrom1.blastList.append(self)
         self.chrom2 = chrom2
-        self.chrom2.blastList.append(self)
+
 
         point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, (self.chrom1.pos().y()+(self.chrom1.h)))
         point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, (self.chrom2.pos().y()+(self.chrom2.h*2)))
@@ -247,6 +269,11 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.setZValue(1.0)
         self.tooltip = self.createTooltip()
 
+        #Will do for now, but it does not work as it should (the pen width does not scale with zoom level), so that's why I have to use a 250px border
+        pen = QtGui.QPen()
+        pen.setWidth(250)
+        pen.setCosmetic(False)
+        self.setPen(pen)
 
     def calculatePolygon(self):
 
@@ -270,14 +297,27 @@ class BlastPolygon(QGraphicsPolygonItem):
         return tooltip
 
 
+class BlastFamilyWidget(QWidget):
+    def __init__(self, blastList):
+        super().__init__()
+        self.blastList = blastList
+        self.initUI()
+
+    def initUI(self):
+        self.setGeometry(0, 0, 750, 400)
+        self.setWindowTitle('Manage Blasts')
+        self.show()
+        self.blastTable = QTableWidget()
+        self.blastTable.setRowCount(len(self.blastList))
+        self.blastTable.setColumnCount(4)
+
 
 
 #Inherit from QWidget
-class ExampleWidget(QWidget):
+class MainWidget(QWidget):
     def __init__(self):
         #Super calls the parent object, then we use its constructor
         super().__init__()
-
         self.initUI()
 
     def initUI(self):
@@ -286,7 +326,7 @@ class ExampleWidget(QWidget):
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
         parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        #parseOldBlastFile('blastresults8.blastn', self.graph)
+        parseBlastFile('blastresults8.blastn', self.scene)
 
         self.scene.setSceneRect(0, 0, 1920, 1080)
         #view.setSceneRect(0, 0, 1920, 1080)
@@ -307,6 +347,7 @@ class ExampleWidget(QWidget):
         deleteBlast.triggered.connect(self.deleteBlasts)
 
         manageBlast = QAction('&Manage Blast Families...', self)
+        manageBlast.triggered.connect(self.manageFamilies)
 
         takeScreenshot = QAction('&Take screenshot', self)
         takeScreenshot.triggered.connect(self.saveScreenshot)
@@ -340,6 +381,10 @@ class ExampleWidget(QWidget):
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
+    def manageFamilies(self):
+        window = BlastFamilyWidget(self.scene.blastFamilies)
+        window._exec()
+
     def showBlastDialog(self):
         blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', '/home')
         if blastHandle[0]:
@@ -357,18 +402,14 @@ class ExampleWidget(QWidget):
 
     def deleteBlasts(self):
         for blast in self.scene.blastFamilies:
-            self.scene.removeItem(blast)
+            blast.deleteFamily()
 
     def saveScreenshot(self):
         self.scene.clearSelection()
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
-        print(self.view.size().width(), self.view.size().height())
         image = QtGui.QImage(self.view.size().width(), self.view.size().height(), QtGui.QImage.Format_ARGB32)
-        #Image is not appearing correctly, who knows why (Format does not seem to be the issue
-        print(image.isNull())
         painter = QtGui.QPainter(image)
         painter.fillRect(image.rect(), QtGui.QBrush(QtCore.Qt.white))
-
         self.view.render(painter)
         painter.end()
         image.save('/home/asier/flex2/test.png')
@@ -377,5 +418,5 @@ class ExampleWidget(QWidget):
 
 app = QApplication(sys.argv)
 
-ex = ExampleWidget()
+ex = MainWidget()
 sys.exit(app.exec_())
