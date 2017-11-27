@@ -87,22 +87,21 @@ class GenomeScene(QGraphicsScene):
         #Removing the index improves performance significantly
         self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.chrList = []
-        self.blastList = []
+        self.blastFamilies = []
 
     def createChromosome(self, w, name):
-        #print(w)
         if len(self.chrList) > 0:
             self.chrList.sort(key = lambda Chromosome: Chromosome.scenePos().y())
-            chr = Chromosome(7000000/10, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
+            chr = Chromosome(200, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
         else:
-            chr = Chromosome(7000000/10, 100, w, name)
+            chr = Chromosome(200, 100, w, name)
         self.chrList.append(chr)
         self.addItem(chr)
         return chr
 
     def createBlastPoly(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end):
         blastPoly = BlastPolygon(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end)
-        self.blastList.append(blastPoly)
+        self.blastFamilies.append(blastPoly)
         self.addItem(blastPoly)
 
     def findChromosomeByName(self, name):
@@ -183,7 +182,6 @@ class Chromosome(QGraphicsRectItem):
                 cds.moveCDS(xdiff, ydiff)
 
     def createGene(self, w, pos, name):
-        #print(pos, (pos+w) )
         cds = CDS(self, w, pos, name)
         self.geneList.append(cds)
         self.scene().addItem(cds)
@@ -247,6 +245,7 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkRed))
         self.setAcceptHoverEvents(True)
         self.setZValue(1.0)
+        self.tooltip = self.createTooltip()
 
 
     def calculatePolygon(self):
@@ -260,10 +259,16 @@ class BlastPolygon(QGraphicsPolygonItem):
 
     def hoverEnterEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkYellow))
-        self.setToolTip((self.chrom1.name + ' '))
+        self.setToolTip(self.tooltip)
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkRed))
+
+    def createTooltip(self):
+        tooltip = (self.chrom1.name+ '\n' + str(int(self.pos1start/2)) + ' - ' + str(int(self.pos1end/2)) + '\n\n' +
+            self.chrom2.name+'\n' + str(int(self.pos2start/2)) + ' - ' + str(int(self.pos2end/2)) + '\n')
+        return tooltip
+
 
 
 
@@ -279,13 +284,13 @@ class ExampleWidget(QWidget):
         self.setGeometry(0, 0, 300, 200)
 
         self.scene = GenomeScene()
-        view = GenomeViewer(self.scene)
+        self.view = GenomeViewer(self.scene)
         parseOldGenomeFile('M1627-M1630.plot', self.scene)
         #parseOldBlastFile('blastresults8.blastn', self.graph)
 
-        self.scene.setSceneRect(0, 0, 7000000, 3500000)
+        self.scene.setSceneRect(0, 0, 1920, 1080)
         #view.setSceneRect(0, 0, 1920, 1080)
-        view.fitInView(self.scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        self.view.fitInView(self.scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
         #view.setDragMode(QGraphicsView.ScrollHandDrag)
 
         #Maximize the window (Qt Keywords (like Qt::WindoMaximized) are in the PyQt5.QtCore module
@@ -301,11 +306,19 @@ class ExampleWidget(QWidget):
         deleteBlast = QAction('&Delete Blasts', self)
         deleteBlast.triggered.connect(self.deleteBlasts)
 
+        manageBlast = QAction('&Manage Blast Families...', self)
+
+        takeScreenshot = QAction('&Take screenshot', self)
+        takeScreenshot.triggered.connect(self.saveScreenshot)
+
         menuBar = QMenuBar()
         fileMenu = menuBar.addMenu('&File')
+        blastMenu = menuBar.addMenu('&Blast')
         fileMenu.addAction(openPlot)
         fileMenu.addAction(openBlast)
-        fileMenu.addAction(deleteBlast)
+        fileMenu.addAction(takeScreenshot)
+        blastMenu.addAction(manageBlast)
+        blastMenu.addAction(deleteBlast)
 
 
 
@@ -313,7 +326,7 @@ class ExampleWidget(QWidget):
 
         layVBox = QVBoxLayout()
         layVBox.addWidget(menuBar)
-        layVBox.addWidget(view)
+        layVBox.addWidget(self.view)
         self.setLayout(layVBox)
 
         self.setWindowTitle('Flex2')
@@ -330,16 +343,35 @@ class ExampleWidget(QWidget):
     def showBlastDialog(self):
         blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', '/home')
         if blastHandle[0]:
-            parseOldBlastFile(blastHandle[0], self.graph)
+            parseOldBlastFile(blastHandle[0], self.scene)
 
     def showPlotDialog(self):
         plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', '/home')
         if plotHandle[0]:
-            parseOldGenomeFile(plotHandle[0], self.graph)
+            try:
+                newScene = GenomeScene()
+                parseOldGenomeFile(plotHandle[0], GenomeScene)
+                self.scene = newScene
+            except Exception:
+                pass
 
     def deleteBlasts(self):
-        for blast in self.graph.blastList:
-            self.graph.removeItem(blast)
+        for blast in self.scene.blastFamilies:
+            self.scene.removeItem(blast)
+
+    def saveScreenshot(self):
+        self.scene.clearSelection()
+        self.scene.setSceneRect(self.scene.itemsBoundingRect())
+        print(self.view.size().width(), self.view.size().height())
+        image = QtGui.QImage(self.view.size().width(), self.view.size().height(), QtGui.QImage.Format_ARGB32)
+        #Image is not appearing correctly, who knows why (Format does not seem to be the issue
+        print(image.isNull())
+        painter = QtGui.QPainter(image)
+        painter.fillRect(image.rect(), QtGui.QBrush(QtCore.Qt.white))
+
+        self.view.render(painter)
+        painter.end()
+        image.save('/home/asier/flex2/test.png')
 
 
 
