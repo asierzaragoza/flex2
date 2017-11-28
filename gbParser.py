@@ -4,7 +4,7 @@ import argparse
 import sys
 from subprocess import call
 
-#Adapted to produce the current flex input, might be changed later
+
 
 fosmidList = []
 
@@ -49,17 +49,11 @@ class Fosmid():
             except(KeyError):
                 otherList.append(feature)
 
-
-
-
-
-
         print(len(locusList), len(geneList), len(otherList))
 
 
         newGeneList = [feature for feature in self.features if self._checkDuplicates(feature,locusList) == False]
-        self.features = locusList + newGeneList + otherList
-
+        self.features = locusList + newGeneList
 
     def _checkDuplicates(self, gene, cdsList):
         for cds in cdsList:
@@ -70,6 +64,20 @@ class Fosmid():
                 return False
         return False
 
+    def returnFeatureTypes(self):
+        resultDict = {}
+        for feature in self.features:
+            if feature.type not in resultDict.keys():
+                resultDict[feature.type] = 1
+            else:
+                resultDict[feature.type] += 1
+        return resultDict
+
+    def removeSourceFeature(self):
+        for feature in self.features:
+            if feature.type == 'source':
+                self.features.remove(feature)
+                break
 
 
 
@@ -100,7 +108,7 @@ gbFiles = []
 inputFiles = ['M1627.gbff']
 
 
-
+'''
 #Parse genbank,
 for file in inputFiles:
     print(file)
@@ -120,24 +128,36 @@ for gbRecord in gbFiles:
         newFosmid.addFeature(newFeature)
 
     print(len(newFosmid.features))
+    print(str(newFosmid.returnFeatureTypes()))
 
     newFosmid.purgeGeneList()
 
-    print(len(newFosmid.features))
+    print(str(newFosmid.returnFeatureTypes()))
+'''
 
+def parseGbFile(filename):
+    gbFiles = []
+    with open(filename, 'r') as filehandle:
+        inputFile = SeqIO.parse(filehandle, 'genbank')
+        for record in inputFile:
+            gbFiles.append(record)
+        print(len(gbFiles), 'records from', len(inputFiles), 'file(s) in input\n')
 
+    fosmidList = []
+    for gbRecord in gbFiles:
+        newFosmid = Fosmid(name=gbRecord.id, length=gbRecord.features[0].location.end, seq=gbRecord.seq)
+        featureList = gbRecord.features
+        for rawFeature in featureList:
+            newFeature = Feature(newFosmid, rawFeature)
+            newFeature.getFeatureSequence(
+                str(gbRecord.seq[rawFeature.location.start.position:rawFeature.location.end.position]))
+            newFosmid.addFeature(newFeature)
 
+        newFosmid.purgeGeneList()
+        newFosmid.removeSourceFeature()
+        fosmidList.append(newFosmid)
 
-
-
-    '''
-    print(featureList)
-    print(featureList.location)
-    print(featureList.type)
-    print(featureList.id) #Mostly useless
-    print(len(featureList.qualifiers)) #Ordered dict
-    '''
-
+    return fosmidList
 
 
 

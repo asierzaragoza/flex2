@@ -4,7 +4,8 @@ from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, 
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
-import blastParser
+import blastParser, gbParser
+import xml.etree.ElementTree as ET
 
 #I/O FUNCTIONS
 def parseOldGenomeFile(filename, genomeScene):
@@ -31,16 +32,12 @@ def parseOldGenomeFile(filename, genomeScene):
                 pass
 
 
-def parseGenomeFile(filename, genomeScene):
-    with open(filename) as inputFile:
-        for line in inputFile:
-            if line[0] == '#':
-                pass
-            elif line[0:9] == 'sequences':
-                seqLine = line.split(':')[1]
-                seqLine2 = seqLine.split(';')
-                for sequence in seqLine2:
-                    pass
+def parseGbFile(filename, genomeScene):
+    chromList = gbParser.parseGbFile(filename)
+    for chrom in chromList:
+        genomeScene.createChromosome(chrom.length, chrom.name)
+        for feature in chrom.features:
+            chrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]), feature.id)
 
 
 def parseBlastFile(filename, genomeScene):
@@ -48,33 +45,101 @@ def parseBlastFile(filename, genomeScene):
     families = blastParser.groupHits(newHits)
     for family in families:
         family._equalize()
-        newFamily = BlastFamily(family.parents, genomeScene)
-
-        family.genomeScene = genomeScene
+        newFamily = genomeScene.createBlastFamily(family.parents)
         for BlastHit in family:
             newFamily.createPoly(BlastHit)
-        genomeScene.blastFamilies.append(newFamily)
-        genomeScene.findChromosomeByName(family.parents[0]).blastList.append(newFamily)
-        genomeScene.findChromosomeByName(family.parents[1]).blastList.append(newFamily)
+
 
 
 def parseOldBlastFile(filename, genomeScene):
     with open(filename) as inputFile:
-        total = 0
-
         for line in inputFile:
             if line[0] == '#':
                 pass
             elif len(line.split('\t')) == 12:
-
                 blastLine = line.split('\t')
                 chrom1 = genomeScene.findChromosomeByName(blastLine[0])
                 chrom2 = genomeScene.findChromosomeByName(blastLine[1])
                 genomeScene.createBlastPoly(chrom1, chrom2, int(blastLine[6]),int(blastLine[7]),int(blastLine[8]), int(blastLine[9]))
 
-            total += 1
-            #if total > 10000:
-                #break
+
+def saveFlexFile(genomeScene):
+    root = ET.Element('flexFile')
+    root.set('nOfChrom', str(len(genomeScene.chrList)))
+    root.set('nOfBlastFamilies', str(len(genomeScene.blastFamilies)))
+
+    # Add Chromosomes from the genomeScene to the file
+    for chrom in genomeScene.chrList:
+        chromElement = ET.Element('Chromosome')
+        chromElement.set('name', chrom.name)
+        chromElement.set('length', str(chrom.w/2))
+        chromElement.set('position', (str(chrom.pos().x()) + ',' + str(chrom.pos().y())))
+        #Add chromosome features from featureList
+        for feature in chrom.geneList:
+            featureElement = ET.Element('Feature')
+            featureElement.set('name', feature.name)
+            featureElement.set('length', str(feature.w))
+            featureElement.set('position', str(int(feature.pos().x() - feature.parent.pos().x())))
+            chromElement.append(featureElement)
+        root.append(chromElement)
+
+    #Add Blast Families from the genomeScene to the file
+    for blastFam in genomeScene.blastFamilies:
+        blastFamElement = ET.Element('BlastFamily')
+        blastFamElement.set('parent1', str(blastFam.parents[0]))
+        blastFamElement.set('parent2', str(blastFam.parents[1]))
+        #Add blastPolys from blastPolyList
+        for blastPoly in blastFam.blastPolyList:
+            blastPolyElement = ET.Element('BlastPoly')
+            blastPolyElement.set('pos1start', str(int(blastPoly.pos1start/2)))
+            blastPolyElement.set('pos1end', str(int(blastPoly.pos1end/2)))
+            blastPolyElement.set('pos2start', str(int(blastPoly.pos2start/2)))
+            blastPolyElement.set('pos2end', str(int(blastPoly.pos2end/2)))
+            #We'll get the chrom attributes from the geneFamily - If something does not work, start from here
+            blastFamElement.append(blastPolyElement)
+        root.append(blastFamElement)
+
+    #Write the XML Tree to a file
+    elementTree = ET.ElementTree(element=root)
+    elementTree.write('test.flex')
+
+
+def loadFlexFile(filename, genomeScene):
+    flexFile = ET.ElementTree(file=filename)
+    # .find() finds Elements, .get() finds attributes
+    root = flexFile.getroot()
+    #Get all chromosomes from XML file
+    print(len(root.findall('Chromosome')))
+    for chrom in root.findall('Chromosome'):
+        name = chrom.get('name')
+        length = int(float(chrom.get('length')))
+        position = chrom.get('position').split(',')
+        newChrom = genomeScene.createChromosome(length, name, float(position[0]), float(position[1]))
+        #Create genes according to feature tags
+        for feature in chrom.findall('Feature'):
+            name = feature.get('name')
+            length = int(feature.get('length'))
+            position = int(feature.get('position'))
+            newChrom.createGene(length, position, name)
+
+    #Get all blast families from XML file
+    for blastFam in root.findall('BlastFamily'):
+        parents = (blastFam.get('parent1'), blastFam.get('parent2'))
+        newFamily = genomeScene.createBlastFamily(parents)
+        chrom1 = genomeScene.findChromosomeByName(parents[0])
+        chrom2 = genomeScene.findChromosomeByName(parents[1])
+        #Create blastPolygons according to blastPoly tags
+        for blastPoly in blastFam.findall('BlastPoly'):
+            pos1start = int(blastPoly.get('pos1start'))
+            pos1end = int(blastPoly.get('pos1end'))
+            pos2start = int(blastPoly.get('pos2start'))
+            pos2end = int(blastPoly.get('pos2end'))
+            newFamily.createPoly2(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end)
+
+    print('Done!')
+
+
+
 
 
 
@@ -83,26 +148,35 @@ class GenomeScene(QGraphicsScene):
     def __init__(self):
         super().__init__()
         self.setMinimumRenderSize(1.0)
-
         #Removing the index improves performance significantly
         self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.chrList = []
         self.blastFamilies = []
 
-    def createChromosome(self, w, name):
+    def createChromosome(self, w, name, x = 200, y = 100):
         if len(self.chrList) > 0:
             self.chrList.sort(key = lambda Chromosome: Chromosome.scenePos().y())
-            chr = Chromosome(200, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
+            chr = Chromosome(x, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
         else:
-            chr = Chromosome(200, 100, w, name)
+            chr = Chromosome(x, y, w, name)
         self.chrList.append(chr)
         self.addItem(chr)
         return chr
 
+    def createBlastFamily(self, parents):
+        newFamily = BlastFamily(parents, self)
+        self.findChromosomeByName(parents[0]).blastList.append(newFamily)
+        self.findChromosomeByName(parents[1]).blastList.append(newFamily)
+        self.blastFamilies.append(newFamily)
+        return newFamily
+
+
+    '''
     def createBlastPoly(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end):
         blastPoly = BlastPolygon(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end)
         self.blastFamilies.append(blastPoly)
         self.addItem(blastPoly)
+    '''
 
     def findChromosomeByName(self, name):
         target = name
@@ -216,6 +290,7 @@ class CDS(QGraphicsRectItem):
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
 
+
 class BlastFamily:
     def __init__(self, parents, genomeScene):
         self.parents = parents
@@ -225,6 +300,11 @@ class BlastFamily:
     def createPoly(self, BlastHit):
         blastPoly = BlastPolygon(self.genomeScene.findChromosomeByName(BlastHit.parents[0]), self.genomeScene.findChromosomeByName(BlastHit.parents[1]),
                                  BlastHit.seq1pos[0], BlastHit.seq1pos[1], BlastHit.seq2pos[0], BlastHit.seq2pos[1])
+        self.blastPolyList.append(blastPoly)
+        self.genomeScene.addItem(blastPoly)
+
+    def createPoly2(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end):
+        blastPoly = BlastPolygon(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end)
         self.blastPolyList.append(blastPoly)
         self.genomeScene.addItem(blastPoly)
 
@@ -244,7 +324,6 @@ class BlastFamily:
         self.genomeScene.findChromosomeByName(self.parents[1]).blastList.remove(self)
         self.genomeScene.blastFamilies.remove(self)
         del self
-
 
 
 class BlastPolygon(QGraphicsPolygonItem):
@@ -349,8 +428,10 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        parseBlastFile('blastresults8.blastn', self.scene)
+        #parseOldGenomeFile('M1627-M1630.plot', self.scene)
+        #parseBlastFile('blastresults8.blastn', self.scene)
+        loadFlexFile('test.flex', self.scene)
+        #saveFlexFile(self.scene)
 
         self.scene.setSceneRect(0, 0, 1920, 1080)
         #view.setSceneRect(0, 0, 1920, 1080)
@@ -384,10 +465,6 @@ class MainWidget(QWidget):
         fileMenu.addAction(takeScreenshot)
         blastMenu.addAction(manageBlast)
         blastMenu.addAction(deleteBlast)
-
-
-
-
 
         layVBox = QVBoxLayout()
         layVBox.addWidget(menuBar)

@@ -221,9 +221,6 @@ def groupHits(blastList):
 
 
 
-
-
-
 acceptedHits = parseBlastFile(outputName)
 blastFamilies = groupHits(acceptedHits)
 with open('blastresults8.blastn', 'w') as filehandle:
@@ -235,24 +232,6 @@ with open('blastresults8.blastn', 'w') as filehandle:
         family.diagnose()
 
         family.printHits(filehandle)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
