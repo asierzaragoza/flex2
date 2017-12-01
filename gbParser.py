@@ -9,7 +9,6 @@ from subprocess import call
 fosmidList = []
 
 class Fosmid():
-
     def __init__(self, name, length, seq):
         self.seq = seq
         self.name = name

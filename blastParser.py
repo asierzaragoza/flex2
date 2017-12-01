@@ -1,14 +1,8 @@
-outputName = 'M1627-M1630.plot.blastn.clean'
-
-
 #Initialize variables
-
+inputName = 'M1627-M1630.plot.blastn.clean'
 nOfHits = 0
-
 minAln = 1250
 minIdentity = 90
-
-blastFamilies = []
 
 class BlastFamily():
     def __init__(self, parentList):
@@ -46,8 +40,11 @@ class BlastFamily():
                 BlastHit.seq1pos = seq2
                 BlastHit.seq2pos = seq1
 
-    def sortHits(self):
-        self.blastList.sort(key= lambda BlastHit : BlastHit.seq1pos)
+    def sortHits(self, sortBy='seq1pos'):
+        if sortBy == 'seq1pos':
+            self.blastList.sort(key= lambda BlastHit : BlastHit.seq1pos)
+        elif sortBy == 'matchLen':
+            self.blastList.sort(key = lambda BlastHit: BlastHit.matchLen)
 
     def mergeBlasts(self):
         #Equalize so seq1 and seq2 are the same sequence for all blasts
@@ -77,7 +74,6 @@ class BlastFamily():
                     fstBlast._status = 'Merged'
                     scdBlast._status = 'Merged'
                     mergeCandidates.append([fstBlast, scdBlast])
-
 
         print(len(mergeCandidates), 'candidate pairs')
         nonMergeList = []
@@ -133,10 +129,6 @@ class BlastFamily():
             print('\tDistance between hits:', 'Seq1', nextHit.seq1pos[0] - currHit.seq1pos[1])
             print('\tDistance between hits:', 'Seq2', nextHit.seq2pos[0] - currHit.seq2pos[1])
 
-
-
-
-
 class BlastHit():
     def __init__(self, line):
         blastLine = line.split('\t')
@@ -148,8 +140,9 @@ class BlastHit():
         self.gaps = int(blastLine[5])
         self.identity = float(blastLine[2])
         self.matchLen = int(blastLine[3])
-        self.bitScore = None
 
+        #Process bitscore
+        self.bitScore = None
         if 'e' in blastLine[11]:
             bitScoreSplit = blastLine[11].split('e')
             if bitScoreSplit[1][0] == '+':
@@ -161,6 +154,14 @@ class BlastHit():
         else:
             self.bitScore = float(blastLine[11])
 
+        #Check if the blastHit is inverted
+        self.inverted = None
+        if self.seq1pos[0] > self.seq1pos[1]:
+            self.inverted = True
+        else:
+            self.inverted = False
+
+
         self._status = None
 
 #Basic filtering: self hits, min length, min identity
@@ -170,32 +171,31 @@ def parseBlastFile(blastFile):
         nOfHits = 0
         acceptedHits = []
         for line in blastResults:
-            nOfHits += 1
-            print('procesing hit nº', nOfHits)
-            newHit = BlastHit(line)
-            # Remove self-hits
-            if newHit.parents[0] == newHit.parents[1]:
-                print('\tSelf hit, removed')
-                causeDict['Self Hits'] += 1
-                continue
-            # Remove low identity hits
-            elif newHit.identity < minIdentity:
-                print('\tLow identity, removed:', minIdentity, '>', newHit.identity)
-                causeDict['Low identity'] += 1
-                continue
-            # Remove small hits
-            elif newHit.matchLen < minAln:
-                print('\tSmall alignment, removed:', minAln, '>', newHit.matchLen)
-                causeDict['Small Match'] += 1
+            if len(line.split('\t')) != 12:
                 continue
             else:
-                print('\tGood hit')
-                acceptedHits.append(newHit)
+                nOfHits += 1
+                print('procesing hit nº', nOfHits)
+                newHit = BlastHit(line)
+                # Remove self-hits
+                if newHit.parents[0] == newHit.parents[1]:
+                    causeDict['Self Hits'] += 1
+                    continue
+                # Remove low identity hits
+                elif newHit.identity < minIdentity:
+                    causeDict['Low identity'] += 1
+                    continue
+                # Remove small hits
+                elif newHit.matchLen < minAln:
+                    causeDict['Small Match'] += 1
+                    continue
+                else:
+                    acceptedHits.append(newHit)
         print(causeDict['Self Hits'], 'self hits removed,', causeDict['Low identity'], 'low identity,', causeDict['Small Match'], 'small matches')
         print(len(acceptedHits), 'hits accepted')
         return acceptedHits
 
-
+#Group blasthits into families
 def groupHits(blastList):
     blastFamilies = []
     blastParents = []
@@ -221,7 +221,7 @@ def groupHits(blastList):
 
 
 
-acceptedHits = parseBlastFile(outputName)
+acceptedHits = parseBlastFile(inputName)
 blastFamilies = groupHits(acceptedHits)
 with open('blastresults8.blastn', 'w') as filehandle:
     for family in blastFamilies:
@@ -234,7 +234,4 @@ with open('blastresults8.blastn', 'w') as filehandle:
         family.printHits(filehandle)
 
 
-
-
-print('Done')
 
