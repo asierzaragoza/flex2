@@ -161,6 +161,7 @@ class GenomeScene(QGraphicsScene):
             chr = Chromosome(x, y, w, name)
         self.chrList.append(chr)
         self.addItem(chr)
+        self.views()[0].fitNewObject()
         return chr
 
     def createBlastFamily(self, parents):
@@ -191,6 +192,7 @@ class GenomeScene(QGraphicsScene):
 class GenomeViewer(QGraphicsView):
     def __init__(self, scene):
         super().__init__(scene)
+        self.fitInView(scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
 
         #OpenGL support is a can of worms I'd prefer not to open
         #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
@@ -213,11 +215,14 @@ class GenomeViewer(QGraphicsView):
         delta = newPos - oldPos
         self.translate(delta.x(), delta.y())
 
+    def fitNewObject(self):
+        self.ensureVisible(self.scene().sceneRect())
+
 
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, name):
         self.h = 12000
-        self.w = (w*2)
+        self.w = (w)
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
         self.ItemIsMovable = True
@@ -253,15 +258,16 @@ class Chromosome(QGraphicsRectItem):
         cds = CDS(self, w, pos, name)
         self.geneList.append(cds)
         self.scene().addItem(cds)
+        self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
         return cds
 
 
 class CDS(QGraphicsRectItem):
     def __init__(self, chromosome, w, pos, name):
-        self.h = 36000
+        self.h = 24000
         self.w = w
         self.parent = chromosome
-        x = chromosome.pos().x() + pos
+        x = chromosome.pos().x() + int(pos/2)
         y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
         print('\t', x, y)
         super().__init__(x, y, self.w, self.h)
@@ -328,10 +334,10 @@ class BlastFamily:
 
 class BlastPolygon(QGraphicsPolygonItem):
     def __init__(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end):
-        self.pos1start = pos1start*2
-        self.pos1end = pos1end * 2
-        self.pos2start = pos2start * 2
-        self.pos2end = pos2end * 2
+        self.pos1start = pos1start
+        self.pos1end = pos1end
+        self.pos2start = pos2start
+        self.pos2end = pos2end
         self.chrom1 = chrom1
         self.chrom2 = chrom2
 
@@ -428,15 +434,13 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        #parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        #parseBlastFile('blastresults8.blastn', self.scene)
-        loadFlexFile('test.flex', self.scene)
+        parseOldGenomeFile('AB030-B8300.plot', self.scene)
+        parseBlastFile('AB030-B8300.plot.blastn.clean', self.scene)
+        self.chromTest = self.scene.chrList[0]
+        #loadFlexFile('test.flex', self.scene)
         #saveFlexFile(self.scene)
 
-        self.scene.setSceneRect(0, 0, 1920, 1080)
-        #view.setSceneRect(0, 0, 1920, 1080)
-        self.view.fitInView(self.scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
-        #view.setDragMode(QGraphicsView.ScrollHandDrag)
+
 
         #Maximize the window (Qt Keywords (like Qt::WindoMaximized) are in the PyQt5.QtCore module
         self.setWindowState(QtCore.Qt.WindowMaximized)
@@ -457,14 +461,20 @@ class MainWidget(QWidget):
         takeScreenshot = QAction('&Take screenshot', self)
         takeScreenshot.triggered.connect(self.saveScreenshot)
 
+        s = QAction('&Get Window Sizes', self)
+        s.triggered.connect(self.printWindowSizes)
+
+
         menuBar = QMenuBar()
         fileMenu = menuBar.addMenu('&File')
         blastMenu = menuBar.addMenu('&Blast')
+        debugMenu = menuBar.addMenu('&Debug')
         fileMenu.addAction(openPlot)
         fileMenu.addAction(openBlast)
         fileMenu.addAction(takeScreenshot)
         blastMenu.addAction(manageBlast)
         blastMenu.addAction(deleteBlast)
+        debugMenu.addAction(s)
 
         layVBox = QVBoxLayout()
         layVBox.addWidget(menuBar)
@@ -513,7 +523,17 @@ class MainWidget(QWidget):
         painter.fillRect(image.rect(), QtGui.QBrush(QtCore.Qt.white))
         self.view.render(painter)
         painter.end()
-        image.save('/home/asier/flex2/test.png')
+        image.save('./test.png')
+
+    def printWindowSizes(self):
+        viewPortRect = QtCore.QRect(0, 0, self.view.viewport().width(), self.view.viewport().height())
+        visibleSceneRect = self.view.mapToScene(viewPortRect).boundingRect()
+        print('INIT STATES')
+        print('ViewportSize', self.view.viewport().width(), 'x', self.view.viewport().height())
+        print('ScenerectSize', int(self.scene.sceneRect().width()), 'x', int(self.scene.sceneRect().height()))
+        print(visibleSceneRect.width(), visibleSceneRect.height())
+        #print(self.chromTest.mapToScene())
+
 
 
 
