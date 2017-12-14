@@ -1,5 +1,5 @@
 #Initialize variables
-inputName = 'clos2ndPlot.plot.blastn.clean'
+
 nOfHits = 0
 minAln = 1000
 minIdentity = 90
@@ -40,79 +40,121 @@ class BlastFamily():
                 BlastHit.seq1pos = seq2
                 BlastHit.seq2pos = seq1
 
+    def _separateByType(self):
+        normalList = []
+        reverseList = []
+        for BlastHit in self.blastList:
+            if BlastHit.seq1pos[0] > BlastHit.seq1pos[1]:
+                reverseList.append(BlastHit)
+            else:
+                normalList.append(BlastHit)
+        return[normalList, reverseList]
+
     def sortHits(self, sortBy='seq1pos'):
         if sortBy == 'seq1pos':
             self.blastList.sort(key= lambda BlastHit : BlastHit.seq1pos)
         elif sortBy == 'matchLen':
             self.blastList.sort(key = lambda BlastHit: BlastHit.matchLen)
 
-    def mergeBlasts(self):
+    def mergeBlastList(self):
+        #Initialize variables + Subthreshold (contains the merging parameters)
+        subThreshold = [1000, 1.50]
+        finalBlastList = []
+        nonMergedList = []
         #Equalize so seq1 and seq2 are the same sequence for all blasts
         self._equalize()
-        #Sort hits by seq1 start position
-        self.sortHits()
-        #Then, check which blasts can be merged
+        #Separate blasts by type (normal / reversed)
+        blastLists = self._separateByType()
+        normList = blastLists[0]
+        reversList = blastLists[1]
+
+        #Start with the normal blasts
+        normList.sort(key= lambda BlastHit : BlastHit.seq1pos)
+        self.mergeBlasts(normList, subThreshold, finalBlastList, nonMergedList)
+
+        #Then do the reverse ones. First, transform them into normal blasts:
+        for BlastHit in reversList:
+            BlastHit.seq1pos = (BlastHit.seq1pos[1], BlastHit.seq1pos[0])
+            BlastHit.seq2pos = (BlastHit.seq2pos[1], BlastHit.seq2pos[0])
+        reversList.sort(key= lambda BlastHit : BlastHit.seq1pos)
+        self.mergeBlasts(normList, subThreshold, finalBlastList, nonMergedList, reverse=True)
+
+        newList = finalBlastList + nonMergedList
+        self.blastList = newList
+
+
+        print(len(self.blastList), 'blast hits in final list')
+
+
+    def mergeBlasts(self, blastList, subThreshold, finalList, nonMergedList, reverse = False):
+
         mergeCandidates = []
-        #Subthreshold contains the merging parameters
-        subThreshold = [1000, 1.50]
-        for i in range(0, len(self.blastList)-1):
-            fstBlast = self.blastList[i]
-            scdBlast = self.blastList[i + 1]
+
+        #Get merge parameters
+        for i in range(0, len(blastList) - 1):
+            fstBlast = blastList[i]
+            scdBlast = blastList[i + 1]
             pos1Dtce = (scdBlast.seq1pos[0] - fstBlast.seq1pos[1] + 0.1)
             pos2Dtce = (scdBlast.seq2pos[0] - fstBlast.seq2pos[1] + 0.1)
             dtceDiv = abs(pos1Dtce / pos2Dtce)
-            #first, check if the blast hits overlap. If they do, add them to the merge candidate list
-            if pos1Dtce < 0 and pos2Dtce < 0 and (1/1.05) < dtceDiv < 1.05:
+            # first, check if the blast hits overlap. If they do, add them to the merge candidate list
+            if pos1Dtce < 0 and pos2Dtce < 0 and (1 / 1.05) < dtceDiv < 1.05:
                 fstBlast._status = 'Merged'
                 scdBlast._status = 'Merged'
                 mergeCandidates.append([fstBlast, scdBlast])
                 pass
-            #if they don't, check that the distance between blasts is between the specified parameters
+            # if they don't, check that the distance between blasts is between the specified parameters
             else:
-                dtceSub = int(abs(pos1Dtce)+abs(pos2Dtce)) < subThreshold[0] and abs(pos1Dtce) < subThreshold[0]/2 and abs(pos2Dtce) < subThreshold[0]/2
-                if (1/subThreshold[1]) < dtceDiv < subThreshold[1] and dtceSub:
+                dtceSub = int(abs(pos1Dtce) + abs(pos2Dtce)) < subThreshold[0] and abs(pos1Dtce) < subThreshold[0] / 2 and abs(
+                    pos2Dtce) < subThreshold[0] / 2
+                if (1 / subThreshold[1]) < dtceDiv < subThreshold[1] and dtceSub:
                     fstBlast._status = 'Merged'
                     scdBlast._status = 'Merged'
                     mergeCandidates.append([fstBlast, scdBlast])
 
         print(len(mergeCandidates), 'candidate pairs')
-        nonMergeList = []
-        for blastHit in self.blastList:
+        for blastHit in blastList:
             if blastHit._status is None:
-                nonMergeList.append(blastHit)
-        print('not merged blasts:', len(nonMergeList))
+                if reverse:
+                    blastHit.seq1pos = (blastHit.seq1pos[1], blastHit.seq1pos[0])
+                    blastHit.seq2pos = (blastHit.seq2pos[1], blastHit.seq2pos[0])
+                else:
+                    pass
+                nonMergedList.append(blastHit)
+        print('not merged blasts:', len(nonMergedList))
 
-        #Merge concatenated pairs (merge pairs that have a blast hit in common)
+        # Merge concatenated pairs (merge pairs that have a blast hit in common)
         i = 0
-        while i < len(mergeCandidates)-1:
-            if mergeCandidates[i][-1] == mergeCandidates[i+1][0]:
-                newList = [mergeCandidates[i][0], mergeCandidates[i+1][1]]
+        while i < len(mergeCandidates) - 1:
+            if mergeCandidates[i][-1] == mergeCandidates[i + 1][0]:
+                newList = [mergeCandidates[i][0], mergeCandidates[i + 1][1]]
                 mergeCandidates[i] = newList
-                mergeCandidates.pop(i+1)
+                mergeCandidates.pop(i + 1)
                 i = 0
                 continue
             else:
                 i += 1
         print(len(mergeCandidates), 'non-concatenated candidate pairs')
-        #Merge candidate pairs
-        finalCandidateList = []
+
+        # Merge candidate pairs
         for candidates in mergeCandidates:
             gaps = str(candidates[0].gaps + candidates[1].gaps)
-            mismatches = str(candidates[0].mismatches + candidates[1].mismatches + abs(candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
-            matchLen = str(candidates[0].matchLen + candidates[1].matchLen + abs(candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
-            identity = str((candidates[0].identity + candidates[1].identity)/2)
-            line = candidates[0].parents[0] + '\t' + candidates[0].parents[1] + '\t' + identity + '\t' + matchLen + '\t' + mismatches + '\t' + str(gaps)+ '\t'
-            line2 = str(candidates[0].seq1pos[0]) + '\t' + str(candidates[1].seq1pos[1]) + '\t' + str(candidates[0].seq2pos[0]) + '\t' + str(candidates[1].seq2pos[1]) + '\t' + '0' + '\t' +'0\n'
+            mismatches = str(candidates[0].mismatches + candidates[1].mismatches + abs(
+                candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
+            matchLen = str(candidates[0].matchLen + candidates[1].matchLen + abs(
+                candidates[1].seq2pos[0] - candidates[0].seq1pos[1]))
+            identity = str((candidates[0].identity + candidates[1].identity) / 2)
+            line = candidates[0].parents[0] + '\t' + candidates[0].parents[
+                1] + '\t' + identity + '\t' + matchLen + '\t' + mismatches + '\t' + str(gaps) + '\t'
+            line2 = str(candidates[0].seq1pos[0]) + '\t' + str(candidates[1].seq1pos[1]) + '\t' + str(
+                candidates[0].seq2pos[0]) + '\t' + str(candidates[1].seq2pos[1]) + '\t' + '0' + '\t' + '0\n'
 
-            newBlastHit = BlastHit(line+line2)
-            finalCandidateList.append(newBlastHit)
-
-
-        newList = finalCandidateList + nonMergeList
-        self.blastList = newList
-        self.sortHits()
-
-        print(len(self.blastList), 'blast hits in final list')
+            newBlastHit = BlastHit(line + line2)
+            if reverse:
+                newBlastHit.seq1pos = (newBlastHit.seq1pos[1], newBlastHit.seq1pos[0])
+            else:
+                pass
+            finalList.append(newBlastHit)
 
     def printHits(self, filehandle):
         for blastHit in self.blastList:
@@ -220,18 +262,20 @@ def groupHits(blastList):
     return blastFamilies
 
 
-'''
+inputName = 'AB030-B8300.plot.blastn.clean'
+
+
 acceptedHits = parseBlastFile(inputName)
 blastFamilies = groupHits(acceptedHits)
-with open('blastresultsClos.blastn', 'w') as filehandle:
+with open('blastresultsReverseFIXED.blastn', 'w') as filehandle:
     for family in blastFamilies:
         print('parents', family.parents, len(family.blastList))
         family.removeOwnHits()
         print('len after removing duplicates', len(family.blastList))
-        family.mergeBlasts()
+        family.mergeBlastList()
         family.diagnose()
 
         family.printHits(filehandle)
 
-'''
+
 
