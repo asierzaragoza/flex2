@@ -32,7 +32,9 @@ def parseOldGenomeFile(filename, genomeScene):
                 qualDict = {}
                 qualDict['product'] = cdsLine[7]
                 chr = genomeScene.findChromosomeByName(cdsLine[0])
-                chr.createGene((int(cdsLine[4])-int(cdsLine[3])), int(cdsLine[3]), cdsLine[5], cdsLine[1], qualDict)
+                # Length / position / strand / name / type / qualifierDict
+                chr.createGene((int(cdsLine[4])-int(cdsLine[3])), int(cdsLine[3]), cdsLine[5], cdsLine[1], cdsLine[2],
+                               qualDict)
 
                 pass
             else:
@@ -45,9 +47,9 @@ def parseGbFile(filename, genomeScene):
     for chrom in chromList:
         genomeScene.createChromosome(chrom.length, chrom.name)
         for feature in chrom.features:
-            # Length / position / strand / name / qualifierDict
+            # Length / position / strand / name / type / qualifierDict
             chrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]), feature.position[2],
-                             feature.id, feature.qualifiers)
+                             feature.id, feature.type, feature.qualifiers)
 
 
 def parseBlastFile(filename, genomeScene):
@@ -91,6 +93,7 @@ def saveFlexFile(genomeScene):
             featureElement.set('length', str(feature.w))
             featureElement.set('position', str(int(feature.pos().x() - feature.parent.pos().x())))
             featureElement.set('strand', feature.strand)
+            featureElement.set('type', feature.type)
             #Add qualifiers from the qualifier dict
             qualifierElement = ET.Element('Qualifiers')
             for key in feature.qualifiers.keys():
@@ -138,11 +141,12 @@ def loadFlexFile(filename, genomeScene):
             length = int(feature.get('length'))
             strand = feature.get('strand')
             position = int(feature.get('position'))
+            type = feature.get('type')
             qualifier = feature.find('Qualifiers')
             qualDict = {}
             for qualItem in qualifier.findall():
                 qualDict[qualItem.tag] = qualItem.attrib
-            newChrom.createGene(length, position, strand, name, qualDict)
+            newChrom.createGene(length, position, strand, name, type, qualDict)
 
 
 
@@ -293,8 +297,8 @@ class Chromosome(QGraphicsRectItem):
                 cds.moveCDS(xdiff, ydiff)
 
 
-    def createGene(self, w, pos, strand, name, qualifiers):
-        cds = CDS(self, w, pos, strand, name, qualifiers)
+    def createGene(self, w, pos, strand, name, type, qualifiers):
+        cds = CDS(self, w, pos, strand, name, type, qualifiers)
         self.geneList.append(cds)
         self.scene().addItem(cds)
         self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
@@ -302,12 +306,13 @@ class Chromosome(QGraphicsRectItem):
 
 
 class CDS(QGraphicsPolygonItem):
-    def __init__(self, chromosome, w, pos, strand, name, qualifiers):
+    def __init__(self, chromosome, w, pos, strand, name, type, qualifiers):
         self.h = 16000
         self.w = w
         self.parent = chromosome
         self.qualifiers = qualifiers
         self.strand = strand
+        self.type = type
         x = chromosome.pos().x() + int(pos/2)
         y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
 
@@ -606,8 +611,8 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        parseBlastFile('blastresults8.blastn', self.scene)
+        parseOldGenomeFile('AB030-B8300.plot', self.scene)
+        parseBlastFile('AB030-B8300.plot.blastn.clean', self.scene)
         self.chromTest = self.scene.chrList[0]
         #loadFlexFile('test.flex', self.scene)
         #saveFlexFile(self.scene)
