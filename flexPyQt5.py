@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
-    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox
+    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
@@ -48,7 +48,6 @@ def parseBlastFile(filename, genomeScene):
         newFamily = genomeScene.createBlastFamily(family.parents)
         for BlastHit in family:
             newFamily.createPoly(BlastHit)
-
 
 
 def parseOldBlastFile(filename, genomeScene):
@@ -152,6 +151,7 @@ class GenomeScene(QGraphicsScene):
         self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.chrList = []
         self.blastFamilies = []
+        #self.setSceneRect(0 , 0, 25000, 25000)
 
     def createChromosome(self, w, name, x = 200, y = 100):
         if len(self.chrList) > 0:
@@ -161,6 +161,7 @@ class GenomeScene(QGraphicsScene):
             chr = Chromosome(x, y, w, name)
         self.chrList.append(chr)
         self.addItem(chr)
+        self.views()[0].fitNewObject()
         return chr
 
     def createBlastFamily(self, parents):
@@ -191,6 +192,7 @@ class GenomeScene(QGraphicsScene):
 class GenomeViewer(QGraphicsView):
     def __init__(self, scene):
         super().__init__(scene)
+        self.fitInView(scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
 
         #OpenGL support is a can of worms I'd prefer not to open
         #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
@@ -213,11 +215,26 @@ class GenomeViewer(QGraphicsView):
         delta = newPos - oldPos
         self.translate(delta.x(), delta.y())
 
+        #Adjust Cds to zoom. first, figure how many screen pixels is a qgraphicsscene unit
+        viewPortRect = QtCore.QRect(0, 0, self.scene().views()[0].viewport().width(),
+                                    self.scene().views()[0].viewport().height())
+        visibleSceneRectWidth = int(self.scene().views()[0].mapToScene(viewPortRect).boundingRect().width())
+        viewportWidth = int(self.scene().views()[0].viewport().width())
+        target = viewportWidth / visibleSceneRectWidth
+        for chrom in self.scene().chrList:
+            for cds in chrom.geneList:
+                cds.checkColor(target)
+        #self.scene().views()[0].viewport().update(viewPortRect)
+
+
+    def fitNewObject(self):
+        self.ensureVisible(self.scene().sceneRect())
+
 
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, name):
-        self.h = 12000
-        self.w = (w*2)
+        self.h = 8000
+        self.w = (w)
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
         self.ItemIsMovable = True
@@ -248,28 +265,82 @@ class Chromosome(QGraphicsRectItem):
 
             for cds in self.geneList:
                 cds.moveCDS(xdiff, ydiff)
+                print(cds.pos())
+            print(self.pos())
 
     def createGene(self, w, pos, name):
         cds = CDS(self, w, pos, name)
         self.geneList.append(cds)
         self.scene().addItem(cds)
+        self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
         return cds
 
 
-class CDS(QGraphicsRectItem):
+class CDS(QGraphicsPolygonItem):
     def __init__(self, chromosome, w, pos, name):
-        self.h = 36000
+        self.h = 16000
         self.w = w
         self.parent = chromosome
-        x = chromosome.pos().x() + pos
+        x = chromosome.pos().x() + int(pos/2)
         y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
-        print('\t', x, y)
-        super().__init__(x, y, self.w, self.h)
+
+        #Get Rectangle Shape
+        point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                               chromosome.pos().y() - (self.h/4))
+        point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                               chromosome.pos().y() + (self.h * 1))
+        point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                               chromosome.pos().y() + (self.h * 1))
+        point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                               chromosome.pos().y() - (self.h/4))
+        self.rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
+
+        #Get triangle shape
+
+        point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                               chromosome.pos().y() + (self.h / 2.5))
+        point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                               chromosome.pos().y() - (self.h / 4))
+        point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                               chromosome.pos().y() + self.h)
+
+        self.trianPolygon = QtGui.QPolygonF((point1, point2, point3))
+
+        #Get Arrow Shape
+
+        point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                               chromosome.pos().y() + (self.h / 2.5))
+        point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                               chromosome.pos().y() + self.h)
+        point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                               chromosome.pos().y() + (self.parent.h * 1.5))
+        point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                               chromosome.pos().y() + (self.parent.h * 1.5))
+        point5 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                               chromosome.pos().y())
+        point6 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                               chromosome.pos().y())
+        point7 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                               chromosome.pos().y() - (self.h/4))
+
+        self.arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
+
+
+
+
+        super().__init__(self.rectPolygon)
         self.setPos(QtCore.QPoint(x, y))
         self.name = name
         self.setAcceptHoverEvents(True)
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setZValue(3.0)
+
+        # Will do for now, but it does not work as it should (the pen width does not scale with zoom level), so that's why I have to use a 250px border
+        pen = QtGui.QPen()
+        pen.setWidth(50)
+        pen.setCosmetic(False)
+        self.setPen(pen)
 
     def moveCDS(self, xdiff, ydiff):
         self.setPos(QtCore.QPoint(self.pos().x() + xdiff, self.pos().y() + ydiff))
@@ -289,6 +360,38 @@ class CDS(QGraphicsRectItem):
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+
+
+    def checkColor(self, target=None):
+        if target is None:
+            viewPortRect = QtCore.QRect(0, 0, self.scene().views()[0].viewport().width(),
+                                        self.scene().views()[0].viewport().height())
+            visibleSceneRectWidth = int(self.scene().views()[0].mapToScene(viewPortRect).boundingRect().width())
+            viewportWidth = int(self.scene().views()[0].viewport().width())
+            target = viewportWidth / visibleSceneRectWidth
+        pos = int(self.pos().x() - self.w)
+
+        if (self.w * target) > 50:
+            self.setPolygon(self.arrowPolygon)
+            self.prepareGeometryChange()
+            self.update()
+
+        elif (self.w * target) > 20:
+            self.setPolygon(self.trianPolygon)
+            self.prepareGeometryChange()
+            self.update()
+
+
+        else:
+            self.setPolygon(self.rectPolygon)
+            self.prepareGeometryChange()
+            self.update()
+
+
+
+
+
+
 
 
 class BlastFamily:
@@ -328,10 +431,10 @@ class BlastFamily:
 
 class BlastPolygon(QGraphicsPolygonItem):
     def __init__(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end):
-        self.pos1start = pos1start*2
-        self.pos1end = pos1end * 2
-        self.pos2start = pos2start * 2
-        self.pos2end = pos2end * 2
+        self.pos1start = pos1start
+        self.pos1end = pos1end
+        self.pos2start = pos2start
+        self.pos2end = pos2end
         self.chrom1 = chrom1
         self.chrom2 = chrom2
 
@@ -428,15 +531,13 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        #parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        #parseBlastFile('blastresults8.blastn', self.scene)
-        loadFlexFile('test.flex', self.scene)
+        parseOldGenomeFile('M1627-M1630.plot', self.scene)
+        parseBlastFile('blastresults8.blastn', self.scene)
+        self.chromTest = self.scene.chrList[0]
+        #loadFlexFile('test.flex', self.scene)
         #saveFlexFile(self.scene)
 
-        self.scene.setSceneRect(0, 0, 1920, 1080)
-        #view.setSceneRect(0, 0, 1920, 1080)
-        self.view.fitInView(self.scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
-        #view.setDragMode(QGraphicsView.ScrollHandDrag)
+
 
         #Maximize the window (Qt Keywords (like Qt::WindoMaximized) are in the PyQt5.QtCore module
         self.setWindowState(QtCore.Qt.WindowMaximized)
@@ -457,14 +558,20 @@ class MainWidget(QWidget):
         takeScreenshot = QAction('&Take screenshot', self)
         takeScreenshot.triggered.connect(self.saveScreenshot)
 
+        s = QAction('&Get Window Sizes', self)
+        s.triggered.connect(self.printWindowSizes)
+
+
         menuBar = QMenuBar()
         fileMenu = menuBar.addMenu('&File')
         blastMenu = menuBar.addMenu('&Blast')
+        debugMenu = menuBar.addMenu('&Debug')
         fileMenu.addAction(openPlot)
         fileMenu.addAction(openBlast)
         fileMenu.addAction(takeScreenshot)
         blastMenu.addAction(manageBlast)
         blastMenu.addAction(deleteBlast)
+        debugMenu.addAction(s)
 
         layVBox = QVBoxLayout()
         layVBox.addWidget(menuBar)
@@ -513,7 +620,17 @@ class MainWidget(QWidget):
         painter.fillRect(image.rect(), QtGui.QBrush(QtCore.Qt.white))
         self.view.render(painter)
         painter.end()
-        image.save('/home/asier/flex2/test.png')
+        image.save('./test.png')
+
+    def printWindowSizes(self):
+        viewPortRect = QtCore.QRect(0, 0, self.view.viewport().width(), self.view.viewport().height())
+        visibleSceneRect = self.view.mapToScene(viewPortRect).boundingRect()
+        print('INIT STATES')
+        print('ViewportSize', self.view.viewport().width(), 'x', self.view.viewport().height())
+        print('ScenerectSize', int(self.scene.sceneRect().width()), 'x', int(self.scene.sceneRect().height()))
+        print(visibleSceneRect.width(), visibleSceneRect.height())
+
+
 
 
 

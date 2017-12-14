@@ -1,7 +1,7 @@
 #Initialize variables
-inputName = 'M1627-M1630.plot.blastn.clean'
+inputName = 'clos2ndPlot.plot.blastn.clean'
 nOfHits = 0
-minAln = 1250
+minAln = 1000
 minIdentity = 90
 
 class BlastFamily():
@@ -220,10 +220,10 @@ def groupHits(blastList):
     return blastFamilies
 
 
-
+'''
 acceptedHits = parseBlastFile(inputName)
 blastFamilies = groupHits(acceptedHits)
-with open('blastresults8.blastn', 'w') as filehandle:
+with open('blastresultsClos.blastn', 'w') as filehandle:
     for family in blastFamilies:
         print('parents', family.parents, len(family.blastList))
         family.removeOwnHits()
@@ -233,5 +233,5 @@ with open('blastresults8.blastn', 'w') as filehandle:
 
         family.printHits(filehandle)
 
-
+'''
 
