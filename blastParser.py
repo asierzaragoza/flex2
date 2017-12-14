@@ -1,7 +1,7 @@
 #Initialize variables
 
 nOfHits = 0
-minAln = 1000
+minAln = 0
 minIdentity = 90
 
 class BlastFamily():
@@ -84,7 +84,6 @@ class BlastFamily():
 
 
         print(len(self.blastList), 'blast hits in final list')
-
 
     def mergeBlasts(self, blastList, subThreshold, finalList, nonMergedList, reverse = False):
 
@@ -170,6 +169,90 @@ class BlastFamily():
             print(i, '-', (i+1), 'Statistics')
             print('\tDistance between hits:', 'Seq1', nextHit.seq1pos[0] - currHit.seq1pos[1])
             print('\tDistance between hits:', 'Seq2', nextHit.seq2pos[0] - currHit.seq2pos[1])
+
+    def _binHits(self, binSize, minLen, maxLen):
+        # findBreakPoint() already sorts the matchList
+        binNo = None
+        try:
+            binNo = round(((maxLen - minLen) / binSize), 0)
+            print('binNo:', binNo)
+        except ZeroDivisionError:
+            return None
+        bins = []
+
+        for i in range(0, (int(binNo))):
+            # Calculate bin ranges
+            minBinSize = minLen + binSize + (binSize * (i - 1))
+            maxBinSize = minLen + binSize + (binSize * i)
+            binList = []
+            for match in self.blastList:
+                # If the match is larger than the maxSize, stop iterating (useful for subsequent bins)
+                if match.matchLen > maxLen:
+                    break
+                # If the match is between the bin parameters, store it
+                elif minBinSize <= match.matchLen < maxBinSize:
+                    binList.append(match.matchLen)
+                else:
+                    pass
+            bins.append(binList)
+        return bins
+
+    def _findBreakPoint(self, binSize=None):
+        self.sortHits(sortBy='matchLen')
+        # minValue = -1e-10
+        minHit = self.blastList[0].matchLen
+        maxHit = self.blastList[-1].matchLen
+        if binSize is None:
+            binSize = (maxHit - minHit) / 10
+
+        for i in range(0, 10):
+            bins = self._binHits(binSize, minHit, maxHit)
+
+            if bins == None or len(bins) == 0:
+                return maxHit
+
+            # Get n of hits
+            totalHits = 0
+            for list in bins:
+                totalHits += len(list)
+            # Get slopes
+            slopeBin = []
+
+            # Iterate over bins
+            noResults = True
+            for j in range(0, len(bins) - 2):
+                currBin = bins[j]
+                nextBin = bins[j + 1]
+                futBin = bins[j + 2]
+                nOfHits = len(currBin) + len(nextBin) + len(futBin)
+                slope = (len(nextBin) - len(currBin)) / binSize
+                futSlope = (len(futBin) - len(nextBin)) / binSize
+                try:
+                    slopeDiv = (slope / futSlope)
+                except ZeroDivisionError:
+                    slopeDiv = 0
+                if slope < 0 and slopeDiv >= 2 and nOfHits / totalHits > 0.25:
+                    maxHit = minHit + ((j + 1) * binSize)
+
+                    if (binSize / 5) > ((maxHit - minHit) / 15):
+                        binSize = round(binSize / 5, 0)
+                    else:
+                        binSize = round(((maxHit - minHit) / 15), 0)
+                    noResults = False
+                    break
+                else:
+                    pass
+            if noResults:
+                return maxHit
+        return maxHit
+
+    def removeSmallHits(self):
+        minAln = self._findBreakPoint()
+        curatedList = []
+        for BlastHit in self.blastList:
+            if BlastHit.matchLen > minAln:
+                curatedList.append(BlastHit)
+        self.blastList = curatedList
 
 class BlastHit():
     def __init__(self, line):
