@@ -25,7 +25,7 @@ def parseOldGenomeFile(filename, genomeScene):
                 for sequence in seqLine2:
                     seqInfo = sequence.split('=')
                     genomeScene.createChromosome(int(seqInfo[1].rstrip(' ')), seqInfo[0].strip(' '))
-            elif len(line.split('\t')) == 10 and 'source' not in line.split('\t')[7]:
+            elif len(line.split('\t')) > 8 and 'source' not in line.split('\t')[7]:
 
 
                 cdsLine = line.split('\t')
@@ -315,25 +315,33 @@ class CDS(QGraphicsPolygonItem):
         self.type = type
         x = chromosome.pos().x() + int(pos/2)
         y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
+        if self.type != 'repeat_region':
+            shapes = self.calculateShapes(self.parent, pos, is_repeat = False)
+        else:
+            shapes = self.calculateShapes(self.parent, pos, is_repeat=True)
 
-        shapes = self.calculateShapes(self.parent, pos)
         self.rectPolygon = shapes[0]
         self.trianPolygon = shapes[1]
         self.arrowPolygon = shapes[2]
+
 
         super().__init__(self.rectPolygon)
         self.setPos(QtCore.QPoint(x, y))
         self.name = name
         self.setAcceptHoverEvents(True)
-        self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+        if self.type == 'repeat_region':
+            self.setBrush(QtGui.QBrush(QtCore.Qt.cyan))
+        else:
+            self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+            pen = QtGui.QPen()
+            pen.setWidth(50)
+            pen.setCosmetic(False)
+            self.setPen(pen)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setZValue(3.0)
 
         # Will do for now, but it does not work as it should (the pen width does not scale with zoom level), so that's why I have to use a 250px border
-        pen = QtGui.QPen()
-        pen.setWidth(50)
-        pen.setCosmetic(False)
-        self.setPen(pen)
+
 
     def moveCDS(self, xdiff, ydiff):
         self.setPos(QtCore.QPoint(self.pos().x() + xdiff, self.pos().y() + ydiff))
@@ -349,7 +357,7 @@ class CDS(QGraphicsPolygonItem):
 
     def hoverEnterEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkYellow))
-        self.setToolTip((self.name+ ' ' + str(self.w) + self.strand))
+        self.setToolTip((self.name+ ' ' + str(self.w) + self.strand + '\n' + self.type))
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
@@ -362,90 +370,107 @@ class CDS(QGraphicsPolygonItem):
             viewportWidth = int(self.scene().views()[0].viewport().width())
             target = viewportWidth / visibleSceneRectWidth
 
-        if (self.w * target) > 100 and self.polygon() != self.arrowPolygon:
+        if (self.w * target) > 150 and self.polygon() != self.arrowPolygon:
             self.setPolygon(self.arrowPolygon)
             self.prepareGeometryChange()
             self.update()
 
-        elif (self.w * target) > 20 and self.polygon() != self.trianPolygon:
+        elif (self.w * target) > 20 and (self.w * target) < 150 and self.polygon() != self.trianPolygon:
             self.setPolygon(self.trianPolygon)
             self.prepareGeometryChange()
             self.update()
 
 
-        elif self.polygon() != self.rectPolygon:
+        elif (self.w * target) < 20 and self.polygon() != self.rectPolygon:
             self.setPolygon(self.rectPolygon)
             self.prepareGeometryChange()
             self.update()
         else:
             pass
 
-    def calculateShapes(self, chromosome, pos):
+    def calculateShapes(self, chromosome, pos, is_repeat = False):
 
-        # Get Rectangle Shape
-        point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                               chromosome.pos().y() - (self.h / 4))
-        point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                               chromosome.pos().y() + (self.h * 1))
-        point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                               chromosome.pos().y() + (self.h * 1))
-        point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                               chromosome.pos().y() - (self.h / 4))
-        rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
-
-        # Get triangle shape
-        if self.strand == '+':
+        if is_repeat == True:
+            # Get Rectangle Shape
             point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() + (self.h / 2.5))
-            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() - (self.h / 4))
-            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() + self.h)
-            trianPolygon = QtGui.QPolygonF((point1, point2, point3))
-        else:
-            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() + (self.h / 2.5))
+                                   chromosome.pos().y() - (self.h / 2))
             point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
                                    chromosome.pos().y() - (self.h / 4))
-            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() + self.h)
-            trianPolygon = QtGui.QPolygonF((point1, point2, point3))
-
-        # Get Arrow Shape
-        if self.strand == '+':
-            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() + (self.h / 2.5))
-            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                   chromosome.pos().y() + self.h)
-            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                   chromosome.pos().y() + (self.parent.h * 1.5))
+            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                   chromosome.pos().y() - (self.h / 4))
             point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() + (self.parent.h * 1.5))
-            point5 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y())
-            point6 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                   chromosome.pos().y())
-            point7 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                   chromosome.pos().y() - (self.h / 4))
-            arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
-        else:
-            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() + (self.h / 2.5))
-            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                   chromosome.pos().y() + self.h)
-            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                   chromosome.pos().y() + (self.parent.h * 1.5))
-            point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() + (self.parent.h * 1.5))
-            point5 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y())
-            point6 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                   chromosome.pos().y())
-            point7 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                   chromosome.pos().y() - (self.h / 4))
-            arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
+                                   chromosome.pos().y() - (self.h / 2))
+            rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
-        return [rectPolygon, trianPolygon, arrowPolygon]
+            return [rectPolygon, None, None]
+
+
+
+        else:
+            # Get Rectangle Shape
+            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                   chromosome.pos().y() - (self.h / 4))
+            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                   chromosome.pos().y() + (self.h * 1))
+            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                   chromosome.pos().y() + (self.h * 1))
+            point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                   chromosome.pos().y() - (self.h / 4))
+            rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
+
+            # Get triangle shape
+            if self.strand == '+':
+                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                       chromosome.pos().y() + (self.h / 2.5))
+                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                       chromosome.pos().y() - (self.h / 4))
+                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                       chromosome.pos().y() + self.h)
+                trianPolygon = QtGui.QPolygonF((point1, point2, point3))
+            else:
+                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                       chromosome.pos().y() + (self.h / 2.5))
+                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                       chromosome.pos().y() - (self.h / 4))
+                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                       chromosome.pos().y() + self.h)
+                trianPolygon = QtGui.QPolygonF((point1, point2, point3))
+
+            # Get Arrow Shape
+            if self.strand == '+':
+                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                       chromosome.pos().y() + (self.h / 2.5))
+                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                                       chromosome.pos().y() + self.h)
+                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                                       chromosome.pos().y() + (self.parent.h * 1.5))
+                point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                       chromosome.pos().y() + (self.parent.h * 1.5))
+                point5 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                       chromosome.pos().y())
+                point6 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                                       chromosome.pos().y())
+                point7 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
+                                       chromosome.pos().y() - (self.h / 4))
+                arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
+            else:
+                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                       chromosome.pos().y() + (self.h / 2.5))
+                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
+                                       chromosome.pos().y() + self.h)
+                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
+                                       chromosome.pos().y() + (self.parent.h * 1.5))
+                point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                       chromosome.pos().y() + (self.parent.h * 1.5))
+                point5 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                       chromosome.pos().y())
+                point6 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
+                                       chromosome.pos().y())
+                point7 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
+                                       chromosome.pos().y() - (self.h / 4))
+                arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
+
+            return [rectPolygon, trianPolygon, arrowPolygon]
 
     def modifyBrush(self, hue = None, saturation = None, value = None, style = None):
         #oldColor = self.brush().color()
@@ -611,8 +636,8 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        parseOldGenomeFile('AB030-B8300.plot', self.scene)
-        parseBlastFile('AB030-B8300.plot.blastn.clean', self.scene)
+        parseOldGenomeFile('M1627-M1630.plot', self.scene)
+        parseBlastFile('blastresults3o.blastn', self.scene)
         self.chromTest = self.scene.chrList[0]
         #loadFlexFile('test.flex', self.scene)
         #saveFlexFile(self.scene)

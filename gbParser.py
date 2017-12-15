@@ -141,7 +141,6 @@ def parseGbFile(filename):
         for record in inputFile:
             gbFiles.append(record)
         print(len(gbFiles), 'records from', len(inputFiles), 'file(s) in input\n')
-
     fosmidList = []
     for gbRecord in gbFiles:
         newFosmid = Fosmid(name=gbRecord.id, length=gbRecord.features[0].location.end, seq=gbRecord.seq)

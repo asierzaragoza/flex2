@@ -64,20 +64,25 @@ class BlastFamily():
         #Equalize so seq1 and seq2 are the same sequence for all blasts
         self._equalize()
         #Separate blasts by type (normal / reversed)
+        print('N of total Blasts:', len(self.blastList))
         blastLists = self._separateByType()
         normList = blastLists[0]
         reversList = blastLists[1]
+        print('N of normal Blasts:', len(normList))
+        print('N of reverse Blasts:', len(reversList))
+
 
         #Start with the normal blasts
         normList.sort(key= lambda BlastHit : BlastHit.seq1pos)
         self.mergeBlasts(normList, subThreshold, finalBlastList, nonMergedList)
 
+        print('REVERSE BLASTS')
         #Then do the reverse ones. First, transform them into normal blasts:
         for BlastHit in reversList:
             BlastHit.seq1pos = (BlastHit.seq1pos[1], BlastHit.seq1pos[0])
             BlastHit.seq2pos = (BlastHit.seq2pos[1], BlastHit.seq2pos[0])
         reversList.sort(key= lambda BlastHit : BlastHit.seq1pos)
-        self.mergeBlasts(normList, subThreshold, finalBlastList, nonMergedList, reverse=True)
+        self.mergeBlasts(reversList, subThreshold, finalBlastList, nonMergedList, reverse=True)
 
         newList = finalBlastList + nonMergedList
         self.blastList = newList
@@ -249,10 +254,13 @@ class BlastFamily():
     def removeSmallHits(self):
         minAln = self._findBreakPoint()
         curatedList = []
+        i = 0
         for BlastHit in self.blastList:
             if BlastHit.matchLen > minAln:
+                i += 1
                 curatedList.append(BlastHit)
         self.blastList = curatedList
+        print('blasts over the threshold', minAln, ':', i)
 
 class BlastHit():
     def __init__(self, line):
@@ -345,20 +353,24 @@ def groupHits(blastList):
     return blastFamilies
 
 
-inputName = 'AB030-B8300.plot.blastn.clean'
+#The following code only executes when its run as a script
+if __name__ == '__main__':
+    inputName = 'M1627-M1630.plot.blastn.clean'
 
 
-acceptedHits = parseBlastFile(inputName)
-blastFamilies = groupHits(acceptedHits)
-with open('blastresultsReverseFIXED.blastn', 'w') as filehandle:
-    for family in blastFamilies:
-        print('parents', family.parents, len(family.blastList))
-        family.removeOwnHits()
-        print('len after removing duplicates', len(family.blastList))
-        family.mergeBlastList()
-        family.diagnose()
+    acceptedHits = parseBlastFile(inputName)
+    blastFamilies = groupHits(acceptedHits)
+    with open('blastresults3o.blastn', 'w') as filehandle:
+        for family in blastFamilies:
+            print('parents', family.parents, len(family.blastList))
+            family.removeSmallHits()
+            family.removeOwnHits()
+            print('len after removing duplicates', len(family.blastList))
+            family.mergeBlastList()
 
-        family.printHits(filehandle)
+            #family.diagnose()
+
+            family.printHits(filehandle)
 
 
 
