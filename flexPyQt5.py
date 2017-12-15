@@ -404,8 +404,6 @@ class CDS(QGraphicsPolygonItem):
 
             return [rectPolygon, None, None]
 
-
-
         else:
             # Get Rectangle Shape
             point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
