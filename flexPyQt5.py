@@ -352,12 +352,15 @@ class CDS(QGraphicsPolygonItem):
         self.qualifiers = qualifiers
         self.strand = strand
         self.type = type
+        self.style = None
         x = chromosome.pos().x() + int(pos/2)
         y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
-        if self.type != 'repeat_region':
-            shapes = self.calculateShapes(self.parent, pos, is_repeat = False)
+        if self.type == 'repeat_region':
+            shapes = self.calculateShapes(self.parent, pos, type = 'repeat')
+        elif self.type == 'misc_feature':
+            shapes = self.calculateShapes(self.parent, pos, type='misc')
         else:
-            shapes = self.calculateShapes(self.parent, pos, is_repeat=True)
+            shapes = self.calculateShapes(self.parent, pos, type='cds')
 
         self.rectPolygon = shapes[0]
         self.trianPolygon = shapes[1]
@@ -369,9 +372,14 @@ class CDS(QGraphicsPolygonItem):
         self.name = name
         self.setAcceptHoverEvents(True)
         if self.type == 'repeat_region':
-            self.setBrush(QtGui.QBrush(QtCore.Qt.cyan))
+            self.style = QtCore.Qt.cyan
+            self.setBrush(QtGui.QBrush(self.style))
+        elif self.type == 'misc_feature':
+            self.style = QtCore.Qt.darkMagenta
+            self.setBrush(QtGui.QBrush(self.style))
         else:
-            self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+            self.style = QtCore.Qt.darkGreen
+            self.setBrush(QtGui.QBrush(self.style))
             pen = QtGui.QPen()
             pen.setWidth(50)
             pen.setCosmetic(False)
@@ -399,7 +407,7 @@ class CDS(QGraphicsPolygonItem):
         self.setToolTip((self.name+ ' ' + str(self.w) + self.strand + '\n' + self.type))
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
-        self.setBrush(QtGui.QBrush(QtCore.Qt.darkGreen))
+        self.setBrush(QtGui.QBrush(self.style))
 
     def checkShape(self, target=None):
         if target is None:
@@ -427,9 +435,9 @@ class CDS(QGraphicsPolygonItem):
         else:
             pass
 
-    def calculateShapes(self, chromosome, pos, is_repeat = False):
+    def calculateShapes(self, chromosome, pos, type):
 
-        if is_repeat == True:
+        if type == 'repeat':
             # Get Rectangle Shape
             point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
                                    chromosome.pos().y() - (self.h))
@@ -442,6 +450,21 @@ class CDS(QGraphicsPolygonItem):
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
             return [rectPolygon, None, None]
+
+        elif type == 'misc':
+            # Get Rectangle Shape
+            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                   chromosome.pos().y() + (self.h))
+            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
+                                   chromosome.pos().y() + (self.h * 2))
+            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                   chromosome.pos().y() + (self.h * 2))
+            point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
+                                   chromosome.pos().y() + (self.h))
+            rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
+
+            return [rectPolygon, None, None]
+
 
         else:
             # Get Rectangle Shape
