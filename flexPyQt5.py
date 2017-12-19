@@ -224,6 +224,9 @@ class GenomeViewer(QGraphicsView):
     def __init__(self, scene):
         super().__init__(scene)
         self.fitInView(scene.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        self.panning = False
+        self.panPos = None
+        self.zoomLvl = 0
 
         #OpenGL support is a can of worms I'd prefer not to open
         #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
@@ -232,14 +235,17 @@ class GenomeViewer(QGraphicsView):
         #I copypasted this from stackOverflow, but I should recode it so it uses scaleFactor
         self.setTransformationAnchor(QGraphicsView.NoAnchor)
         self.setResizeAnchor(QGraphicsView.NoAnchor)
+
         zoomInFactor = 1.25
         zoomOutFactor = 1/zoomInFactor
         oldPos = self.mapToScene(QWheelEvent.pos())
 
         if QWheelEvent.angleDelta().y() > 0:
             endFactor = zoomInFactor
+            self.zoomLvl += 1
         else:
             endFactor = zoomOutFactor
+            self.zoomLvl -= 1
         self.scale(endFactor, endFactor)
 
         newPos = self.mapToScene(QWheelEvent.pos())
@@ -252,10 +258,42 @@ class GenomeViewer(QGraphicsView):
         visibleSceneRectWidth = int(self.scene().views()[0].mapToScene(viewPortRect).boundingRect().width())
         viewportWidth = int(self.scene().views()[0].viewport().width())
         target = viewportWidth / visibleSceneRectWidth
+
+        print(len(self.scene().chrList))
         for chrom in self.scene().chrList:
+
+            print(len(chrom.geneList))
             for cds in chrom.geneList:
-                cds.checkShape(target)
+                if cds.type == 'gene':
+                    cds.checkShape(target)
         #self.scene().views()[0].viewport().update(viewPortRect)
+
+    def mousePressEvent(self, QMouseEvent):
+        if QMouseEvent.button() == QtCore.Qt.MiddleButton:
+            self.panning = True
+            self.panPos = (QMouseEvent.x(), QMouseEvent.y())
+            print('True')
+        else:
+            QGraphicsView.mousePressEvent(self, QMouseEvent)
+
+
+
+    def mouseMoveEvent(self, QMouseEvent):
+        if self.panning == True:
+            xdiff = (QMouseEvent.x() - self.panPos[0]) * self.zoomLvl * 5
+            ydiff = (QMouseEvent.y() - self.panPos[1]) * self.zoomLvl * 5
+            self.translate(xdiff, ydiff)
+            self.panPos = (QMouseEvent.x(), QMouseEvent.y())
+
+        else:
+            QGraphicsView.mouseMoveEvent(self, QMouseEvent)
+
+    def mouseReleaseEvent(self, QMouseEvent):
+        if QMouseEvent.button() == QtCore.Qt.MiddleButton:
+            self.panning = False
+            print('False')
+        else:
+            QGraphicsView.mouseReleaseEvent(self, QMouseEvent)
 
 
     def fitNewObject(self):
@@ -396,11 +434,11 @@ class CDS(QGraphicsPolygonItem):
             point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
                                    chromosome.pos().y() - (self.h))
             point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() - (self.h))
+                                   chromosome.pos().y() - (self.h / 4))
             point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
                                    chromosome.pos().y() - (self.h / 4))
             point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() - (self.h / 2))
+                                   chromosome.pos().y() - (self.h))
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
             return [rectPolygon, None, None]
