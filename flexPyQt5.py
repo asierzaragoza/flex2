@@ -2,6 +2,7 @@ import sys
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem
 
+import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import blastParser, gbParser
@@ -659,7 +660,7 @@ class MainWidget(QWidget):
         manageBlast.triggered.connect(self.manageFamilies)
 
         takeScreenshot = QAction('&Take screenshot', self)
-        takeScreenshot.triggered.connect(self.saveScreenshot)
+        takeScreenshot.triggered.connect(self.saveScreenshotSVG)
 
         s = QAction('&Get Window Sizes', self)
         s.triggered.connect(self.printWindowSizes)
@@ -715,7 +716,7 @@ class MainWidget(QWidget):
         for blast in self.scene.blastFamilies:
             blast.deleteFamily()
 
-    def saveScreenshot(self):
+    def saveScreenshotPNG(self):
         self.scene.clearSelection()
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
         image = QtGui.QImage(self.view.size().width(), self.view.size().height(), QtGui.QImage.Format_ARGB32)
@@ -724,6 +725,20 @@ class MainWidget(QWidget):
         self.view.render(painter)
         painter.end()
         image.save('./test.png')
+
+    def saveScreenshotSVG(self):
+        self.scene.clearSelection()
+        self.scene.setSceneRect(self.scene.itemsBoundingRect())
+        svgGen = QtSvg.QSvgGenerator()
+        svgGen.setFileName('./test2.svg')
+        svgGen.setSize(QtCore.QSize(self.view.size().width(), self.view.size().height()))
+        painter = QtGui.QPainter(self.view)
+        painter.begin(svgGen)
+        painter.fillRect(self.view.rect(), QtGui.QBrush(QtCore.Qt.white))
+        self.view.render(painter)
+        painter.end()
+
+
 
     def printWindowSizes(self):
         viewPortRect = QtCore.QRect(0, 0, self.view.viewport().width(), self.view.viewport().height())
