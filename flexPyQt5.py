@@ -8,10 +8,6 @@ import PyQt5.QtGui as QtGui
 import blastParser, gbParser
 import xml.etree.ElementTree as ET
 
-brushStyleDict = {'SolidPattern':QtCore.Qt.SolidPattern, 'Dense1Pattern':QtCore.Qt.Dense1Pattern,
-                  'Dense7Pattern':QtCore.Qt.Dense7Pattern, 'HorPattern':QtCore.Qt.HorPattern,
-                  'VerPattern':QtCore.Qt.VerPattern, 'BDiagPattern':QtCore.Qt.BDiagPattern,
-                  'FDiagPattern':QtCore.Qt.FDiagPattern}
 
 #I/O FUNCTIONS
 def parseOldGenomeFile(filename, genomeScene):
@@ -169,6 +165,29 @@ def loadFlexFile(filename, genomeScene):
     print('Done!')
 
 
+def parseStyleFile(filename):
+    paintOrderList = []
+    with open(filename) as paintFile:
+        for line in paintFile:
+            newPaintOrder = {}
+            orderLine = line.split('\t')
+            newPaintOrder['type'] = orderLine[0].rstrip()
+            if ':' in orderLine[1]:
+                newPaintOrder['class'] = orderLine[1].split(':')[0].rstrip()
+                newPaintOrder['class2'] = orderLine[1].split(':')[1].rstrip()
+            else:
+                newPaintOrder['class'] = None
+                newPaintOrder['class2'] = None
+
+            newPaintOrder['delimiter'] = orderLine[2].rstrip()
+            if orderLine[3].rstrip() != 'None':
+                newPaintOrder['color'] = orderLine[3].split('/')
+                for number in newPaintOrder['color']:
+                    number = int(number)
+            else:
+                newPaintOrder['color'] = [None, None, None]
+            paintOrderList.append(newPaintOrder)
+        return paintOrderList
 
 
 
@@ -219,6 +238,14 @@ class GenomeScene(QGraphicsScene):
         print('chr not found')
         return None
 
+    def applyStyle(self, filename):
+        paintOrderList = parseStyleFile(filename)
+        for chr in self.chrList:
+            print(len(chr.geneList))
+            for cds in chr.geneList:
+                cds.applyStyle(paintOrderList)
+        self.update()
+
 
 class GenomeViewer(QGraphicsView):
     def __init__(self, scene):
@@ -259,10 +286,10 @@ class GenomeViewer(QGraphicsView):
         viewportWidth = int(self.scene().views()[0].viewport().width())
         target = viewportWidth / visibleSceneRectWidth
 
-        print(len(self.scene().chrList))
+
         for chrom in self.scene().chrList:
 
-            print(len(chrom.geneList))
+
             for cds in chrom.geneList:
                 if cds.type == 'gene':
                     cds.checkShape(target)
@@ -272,7 +299,7 @@ class GenomeViewer(QGraphicsView):
         if QMouseEvent.button() == QtCore.Qt.MiddleButton:
             self.panning = True
             self.panPos = (QMouseEvent.x(), QMouseEvent.y())
-            print('True')
+
         else:
             QGraphicsView.mousePressEvent(self, QMouseEvent)
 
@@ -291,7 +318,7 @@ class GenomeViewer(QGraphicsView):
     def mouseReleaseEvent(self, QMouseEvent):
         if QMouseEvent.button() == QtCore.Qt.MiddleButton:
             self.panning = False
-            print('False')
+
         else:
             QGraphicsView.mouseReleaseEvent(self, QMouseEvent)
 
@@ -372,14 +399,14 @@ class CDS(QGraphicsPolygonItem):
         self.name = name
         self.setAcceptHoverEvents(True)
         if self.type == 'repeat_region':
-            self.style = QtCore.Qt.cyan
-            self.setBrush(QtGui.QBrush(self.style))
+            self.style = QtGui.QBrush(QtCore.Qt.cyan)
+            self.setBrush(self.style)
         elif self.type == 'misc_feature':
-            self.style = QtCore.Qt.darkMagenta
-            self.setBrush(QtGui.QBrush(self.style))
+            self.style = QtGui.QBrush(QtCore.Qt.darkMagenta)
+            self.setBrush(self.style)
         else:
-            self.style = QtCore.Qt.darkGreen
-            self.setBrush(QtGui.QBrush(self.style))
+            self.style = QtGui.QBrush(QtCore.Qt.darkGreen)
+            self.setBrush(self.style)
             pen = QtGui.QPen()
             pen.setWidth(50)
             pen.setCosmetic(False)
@@ -388,7 +415,6 @@ class CDS(QGraphicsPolygonItem):
         self.setZValue(3.0)
 
         # Will do for now, but it does not work as it should (the pen width does not scale with zoom level), so that's why I have to use a 250px border
-
 
     def moveCDS(self, xdiff, ydiff):
         self.setPos(QtCore.QPoint(self.pos().x() + xdiff, self.pos().y() + ydiff))
@@ -532,25 +558,66 @@ class CDS(QGraphicsPolygonItem):
 
             return [rectPolygon, trianPolygon, arrowPolygon]
 
-    def modifyBrush(self, hue = None, saturation = None, value = None, style = None):
-        #oldColor = self.brush().color()
-        #oldStyle = self.brush().style()
-        newColor = None
+    def modifyBrush(self, hue = None, saturation = None, value = None):
+        oldColor = self.style.color()
+        newColor = QtGui.QColor(0, 0, 0)
         try:
-            newColor = QtGui.QColor()
-            newColor.fromHsv(hue, int(saturation * 2.55), int(value * 2.55))
-        except Exception:
+            newColor = newColor.fromHsv(int(hue), int(saturation) * 2.55, int(value) * 2.55, 255)
+
+        except Exception as e:
+            print('could not process color!')
+            self.style.setColor(oldColor)
+            print(e)
             pass
 
-        if newColor is None:
-            pass
+        if newColor.getHsv()[0] < 0:
+            self.style.setColor(oldColor)
+            print(oldColor.getHsv(), 'new color is None')
         else:
-            self.brush().setColor(newColor)
+            print(newColor.getHsv(), 'this is the new color')
+            self.style.setColor(newColor)
+        self.setBrush(self.style)
 
-        if style is None:
-            pass
-        else:
-            self.brush().setStyle(style)
+    def applyStyle(self, paintOrderList):
+        print(len(paintOrderList))
+        newColor = [None, None, None]
+
+        for order in paintOrderList:
+            print('trying type')
+            if self.type != order['type']:
+                print('invalid type', order['type'], self.type)
+                continue
+            #Classify by length
+            if order['class'] == 'length':
+                print('trying length')
+                if order['class2'] == '>':
+                    if self.w > int(order['delimiter']):
+                        print('painted! - length')
+                        newColor = [order['color'][0], order['color'][1], order['color'][2]]
+                    else:
+                        print('Not valid!', self.w, '<', int(order['delimiter']))
+                        continue
+                elif order['class2'] == '<':
+                    if self.w < int(order['delimiter']):
+                        newColor = [order['color'][0], order['color'][1], order['color'][2]]
+                    else:
+                        continue
+
+            elif order['class'] == 'qualifier':
+                print('trying qualifiers')
+                try:
+                    cdsValue = self.qualifiers[order['class2']]
+                    if str(order['delimiter'].split(':')[1]) in str(cdsValue):
+                        print('painted! - qualifier', order['color'][0], order['color'][1], order['color'][2])
+                        newColor = [order['color'][0], order['color'][1], order['color'][2]]
+                    else:
+                        print('qualifier does not match', order['delimiter'].split(':')[1], ',', len(order['delimiter']), cdsValue , len(cdsValue))
+                        continue
+                except Exception:
+                    print('no qualifier', order['class2'])
+                    continue
+            self.modifyBrush(newColor[0], newColor[1], newColor[2])
+
 
 
 
@@ -697,8 +764,8 @@ class MainWidget(QWidget):
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
         parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        parseBlastFile('blastresults3o.blastn', self.scene)
-        self.chromTest = self.scene.chrList[0]
+        parseBlastFile('M1627-M1630.plot.blastn.clean', self.scene)
+        self.scene.applyStyle('./style.txt')
         #loadFlexFile('test.flex', self.scene)
         #saveFlexFile(self.scene)
 
