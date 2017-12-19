@@ -1,4 +1,4 @@
-import sys
+import sys, random
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem
 
@@ -394,9 +394,9 @@ class CDS(QGraphicsPolygonItem):
         if is_repeat == True:
             # Get Rectangle Shape
             point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() - (self.h / 2))
+                                   chromosome.pos().y() - (self.h))
             point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() - (self.h / 4))
+                                   chromosome.pos().y() - (self.h))
             point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
                                    chromosome.pos().y() - (self.h / 4))
             point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
@@ -663,7 +663,7 @@ class MainWidget(QWidget):
         takeScreenshot.triggered.connect(self.saveScreenshotSVG)
 
         s = QAction('&Get Window Sizes', self)
-        s.triggered.connect(self.printWindowSizes)
+        s.triggered.connect(self.scrambleChrms)
 
 
         menuBar = QMenuBar()
@@ -747,6 +747,20 @@ class MainWidget(QWidget):
         print('ViewportSize', self.view.viewport().width(), 'x', self.view.viewport().height())
         print('ScenerectSize', int(self.scene.sceneRect().width()), 'x', int(self.scene.sceneRect().height()))
         print(visibleSceneRect.width(), visibleSceneRect.height())
+
+    def scrambleChrms(self):
+        for chr in self.scene.chrList:
+            newX = random.randint(0, (int(self.scene.sceneRect().width() - chr.w / 2)))
+            newY = random.randint(0, (int(self.scene.sceneRect().height() - chr.h / 2)))
+            xdiff = newX - chr.pos().x()
+            ydiff = newY - chr.pos().y()
+            chr.setPos(QtCore.QPoint(newX, newY))
+
+            for blastFamily in chr.blastList:
+                blastFamily.updatePolyPos()
+
+            for cds in chr.geneList:
+                cds.moveCDS(xdiff, ydiff)
 
 
 
