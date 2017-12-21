@@ -1,6 +1,6 @@
 import sys, random
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
-    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem
+    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel
 
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
@@ -430,10 +430,20 @@ class CDS(QGraphicsPolygonItem):
 
     def hoverEnterEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkYellow))
-        self.setToolTip((self.name+ ' ' + str(self.w) + self.strand + '\n' + self.type))
+        tooltipText = '{}, on {}\nType: {}\nLength: {}, on {} strand'.format(self.name, self.parent.name, self.type, self.w, self.strand)
+        try:
+            tooltipText += '\nProduct: {}'.format(self.qualifiers['product'])
+        except KeyError:
+            pass
+
+        self.setToolTip(tooltipText)
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
         self.setBrush(QtGui.QBrush(self.style))
+
+    def mouseDoubleClickEvent(self, QGraphicsSceneMouseEvent):
+        window = CDSInfoWidget(cds = self)
+        window._exec()
 
     def checkShape(self, target=None):
         if target is None:
@@ -607,11 +617,11 @@ class CDS(QGraphicsPolygonItem):
                 print('trying qualifiers')
                 try:
                     cdsValue = self.qualifiers[order['class2']]
-                    if str(order['delimiter'].split(':')[1]) in str(cdsValue):
+                    if str(order['delimiter']) in str(cdsValue):
                         print('painted! - qualifier', order['color'][0], order['color'][1], order['color'][2])
                         newColor = [order['color'][0], order['color'][1], order['color'][2]]
                     else:
-                        print('qualifier does not match', order['delimiter'].split(':')[1], ',', len(order['delimiter']), cdsValue , len(cdsValue))
+                        print('qualifier does not match', order['delimiter'], ',', len(order['delimiter']), cdsValue , len(cdsValue))
                         continue
                 except Exception:
                     print('no qualifier', order['class2'])
@@ -720,7 +730,6 @@ class BlastFamilyWidget(QWidget):
     def initUI(self):
         self.setGeometry(0, 0, 750, 400)
         self.setWindowTitle('Manage Blasts')
-        self.show()
         self.blastTable = QTableWidget()
         self.blastTable.setRowCount(len(self.blastList))
         self.blastTable.setColumnCount(4)
@@ -748,6 +757,36 @@ class BlastFamilyWidget(QWidget):
         self.show()
 
 
+class CDSInfoWidget(QWidget):
+    def __init__(self, cds):
+        super().__init__()
+        self.cds = cds
+        self.initUI()
+
+    def initUI(self):
+        #self.setGeometry(0, 0, 750, 400)
+        self.setWindowTitle('CDS Info')
+        self.label = QLabel()
+        pos = ((int(self.cds.pos().x() - self.cds.parent.pos().x()) * 2), int((self.cds.pos().x() - self.cds.parent.pos().x()) * 2) + self.cds.w)
+        labelText = '''\
+        
+        Feature Name: {}
+        Parent Sequence: {}
+        Feature Type: {}
+        Feature Location: {}
+        Feature Length: {}
+        Feature Strand: {}
+                    
+        FEATURE QUALIFIERS:\
+                    '''.format(self.cds.name, self.cds.parent.name,self.cds.type, (str(pos[0]) + ' - ' + str(pos[1])), self.cds.w, self.cds.strand)
+        for key in self.cds.qualifiers:
+            labelText += '\n\t\t{}: {}'.format(key, self.cds.qualifiers[key])
+        self.label.setText(labelText)
+        layVBox = QVBoxLayout()
+        layVBox.addWidget(self.label)
+        self.setLayout(layVBox)
+
+        self.show()
 
 
 
