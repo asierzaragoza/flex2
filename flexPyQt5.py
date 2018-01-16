@@ -1,6 +1,7 @@
 import sys, random, traceback
-from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
-    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
+    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
+    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout
 
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
@@ -709,7 +710,6 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.setBrush(newBrush)
 
 
-
 class BlastFamilyWidget(QWidget):
     def __init__(self, blastList):
         super().__init__()
@@ -717,15 +717,18 @@ class BlastFamilyWidget(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setGeometry(0, 0, 750, 400)
+        self.setGeometry(0, 0, 350, 400)
         self.setWindowTitle('Manage Blasts')
         self.blastTable = QTableWidget()
         self.blastTable.setRowCount(len(self.blastList))
         self.blastTable.setColumnCount(4)
+        self.blastTable.setHorizontalHeaderLabels(['Sequence 1', 'Sequence 2', 'Nº of Blasts', 'Visible?'])
+        self.blastTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         for i in range(0, len(self.blastList)):
-            indexCell = QTableWidgetItem(str(i+1))
-            parent1Cell = QTableWidgetItem(self.blastList[0].parents[0])
-            parent2Cell = QTableWidgetItem(self.blastList[0].parents[1])
+
+            parent1Cell = QTableWidgetItem(self.blastList[i].parents[0])
+            parent2Cell = QTableWidgetItem(self.blastList[i].parents[1])
+            nOfBlastsCell = QTableWidgetItem(str(len(self.blastList[i].blastPolyList)))
             visibleCell = QCheckBox(self.blastTable)
             visibleCell.setTristate(False)
             self.blastTable.setCellWidget(i, 3, visibleCell)
@@ -735,9 +738,10 @@ class BlastFamilyWidget(QWidget):
                 visibleCell.setCheckState(QtCore.Qt.Checked)
             else:
                 visibleCell.setCheckState(QtCore.Qt.Unchecked)
-            self.blastTable.setItem(i, 0, indexCell)
-            self.blastTable.setItem(i, 1, parent1Cell)
-            self.blastTable.setItem(i, 2, parent2Cell)
+
+            self.blastTable.setItem(i, 0, parent1Cell)
+            self.blastTable.setItem(i, 1, parent2Cell)
+            self.blastTable.setItem(i, 2, nOfBlastsCell)
 
 
         layVBox = QVBoxLayout()
@@ -749,6 +753,7 @@ class BlastFamilyWidget(QWidget):
 class GBInfoWidget(QWidget):
     def __init__(self, gbList):
         super().__init__()
+        self.setGeometry(0, 0, 600, 350)
         self.gbList = gbList
         self.initUI()
 
@@ -756,17 +761,134 @@ class GBInfoWidget(QWidget):
         self.setWindowTitle('Parse Genbank Files')
         self.label = QLabel()
         self.label.setText('The following sequences were found:')
-        self.label2 = QLabel()
-        labelText = ''
-        for gb in self.gbList:
-            labelText += str(gb) + '\n'
-        self.label2.setText(labelText)
+
+        self.gbTable = QTableWidget()
+        self.gbTable.setRowCount(len(self.gbList))
+        self.gbTable.setColumnCount(3)
+        self.gbTable.setHorizontalHeaderLabels(['File', 'SeqName', 'Parse?'])
+
+        self.gbTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.gbTable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.gbTable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+
+        for i in range(0, len(self.gbList)):
+            fileCell = QTableWidgetItem(self.gbList[i][0])
+            idCell = QTableWidgetItem(self.gbList[i][1])
+            parseCell = QCheckBox(self.gbTable)
+            parseCell.setTristate(False)
+            parseCell.setCheckState(QtCore.Qt.Checked)
+
+            self.gbTable.setItem(i, 0, fileCell)
+            self.gbTable.setItem(i, 1, idCell)
+            self.gbTable.setCellWidget(i, 2, parseCell)
+
+        self.blastButton = QPushButton('Blast Options...')
+        self.parseButton = QPushButton('Parse!')
+
+        self.blastButton.clicked.connect(self.getBlastSettings)
+
+
+        layHBox = QHBoxLayout()
+        layHBox.addWidget(self.blastButton)
+        layHBox.addWidget(self.parseButton)
+
         layVBox = QVBoxLayout()
         layVBox.addWidget(self.label)
-        layVBox.addWidget(self.label2)
+        layVBox.addWidget(self.gbTable)
+        layVBox.addLayout(layHBox)
 
         self.setLayout(layVBox)
         self.show()
+
+    def getBlastSettings(self):
+        window = BlastSettingsWidget()
+        window._exec()
+
+
+class BlastSettingsWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setGeometry(0, 0, 600, 200)
+        self.blastSettings = {'blastType':'blastn', 'blastMatrix':'BLOSUM62', 'minIdent':'90.0', 'minAln':'auto', 'mergeAdj':[False, 0],
+                              'saveFile':False}
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Blast Settings')
+        self.labelBlastType = QLabel()
+        self.labelBlastType.setText('Blast Type')
+
+        self.blastTypeGroup = QButtonGroup()
+        self.buttonBlastn = QRadioButton('blastn')
+        self.buttonBlastn.setChecked(True)
+        self.buttonTblastx = QRadioButton('tblastx')
+        self.blastTypeGroup.addButton(self.buttonBlastn)
+        self.blastTypeGroup.addButton(self.buttonBlastn)
+        self.blastTypeGroup.addButton(self.buttonTblastx)
+        self.comboMatrix = QComboBox()
+        self.comboMatrix.addItem('BLOSUM62')
+        self.comboMatrix.addItem('BLOSUM90')
+        self.comboMatrix.addItem('BLOSUM80')
+        self.comboMatrix.addItem('BLOSUM50')
+        self.comboMatrix.addItem('BLOSUM45')
+        self.comboMatrix.addItem('PAM70')
+        self.comboMatrix.addItem('PAM30')
+
+        self.labelMinIdent = QLabel()
+        self.labelMinIdent.setText('Minimum Identity (0-100)%')
+        self.linEditMinIdent = QLineEdit()
+        self.linEditMinIdent.setText('90.0')
+
+        self.labelMinAln = QLabel()
+        self.labelMinAln.setText('Minimum Alignment')
+        self.linEditMinAln = QLineEdit()
+        self.linEditMinAln.setText('auto')
+
+        self.labelMergeBlasts = QLabel()
+        self.labelMergeBlasts.setText('Merge Adjacent Blasts?')
+        self.checkMergeBlasts = QCheckBox()
+        self.checkMergeBlasts.clicked.connect(self.checkAdjBlastsButton)
+        self.checkMergeBlasts.setTristate(False)
+        self.linEditMergeBlasts = QLineEdit()
+        self.linEditMergeBlasts.setReadOnly(True)
+
+        self.labelSaveFiles = QLabel()
+        self.labelSaveFiles.setText('Save Blast file?')
+        self.checkSaveFiles = QCheckBox()
+        self.checkSaveFiles.setTristate(False)
+
+        self.buttonSave = QPushButton('Save and exit')
+        self.buttonExit = QPushButton('Cancel')
+
+        layGbox = QGridLayout()
+        layGbox.addWidget(self.labelBlastType, 0, 0)
+        layGbox.addWidget(self.buttonBlastn, 1, 0)
+        layGbox.addWidget(self.buttonTblastx, 1, 1)
+        layGbox.addWidget(self.comboMatrix, 1, 2)
+        layGbox.addWidget(self.labelMinIdent, 2, 0)
+        layGbox.addWidget(self.linEditMinIdent, 2, 1)
+        layGbox.addWidget(self.labelMinAln, 3, 0)
+        layGbox.addWidget(self.linEditMinAln, 3, 1)
+        layGbox.addWidget(self.labelMergeBlasts, 4, 0)
+        layGbox.addWidget(self.checkMergeBlasts, 4, 1)
+        layGbox.addWidget(self.linEditMergeBlasts, 4, 2)
+        layGbox.addWidget(self.labelSaveFiles, 5, 0)
+        layGbox.addWidget(self.checkSaveFiles, 5, 1)
+        layGbox.addWidget(self.buttonExit, 6, 1)
+        layGbox.addWidget(self.buttonSave, 6, 2)
+
+        self.setLayout(layGbox)
+
+        self.show()
+
+    def checkAdjBlastsButton(self):
+        if self.checkMergeBlasts.isChecked() == True:
+            self.linEditMergeBlasts.setReadOnly(False)
+            self.linEditMergeBlasts.setText('50')
+        else:
+            self.linEditMergeBlasts.setReadOnly(True)
+            self.linEditMergeBlasts.setText('')
+
 
 
 class CDSInfoWidget(QWidget):
@@ -814,7 +936,7 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        parseGbFile('./V97-phage.genbank', self.scene)
+        #parseGbFile('./V97-phage.genbank', self.scene)
         #parseOldGenomeFile('M1627-M1630.plot', self.scene)
         #parseBlastFile('M1627-M1630.plot.blastn.clean', self.scene)
         #self.scene.applyStyle('./style.txt')
@@ -956,7 +1078,7 @@ class MainWidget(QWidget):
             saveFlexFile(self.scene, fileHandle[0])
 
     def showGbDialog(self):
-        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff) ;; All Files (*.*)')
+        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff *.gbk) ;; All Files (*.*)')
         print(plotHandle)
         if plotHandle[0]:
             gbList = gbParser.getGbRecords(plotHandle[0])
@@ -996,9 +1118,6 @@ class MainWidget(QWidget):
 
             for cds in chr.geneList:
                 cds.moveCDS(xdiff, ydiff)
-
-
-
 
 
 app = QApplication(sys.argv)
