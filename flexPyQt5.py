@@ -1,4 +1,4 @@
-import sys, random
+import sys, random, traceback
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel
 
@@ -21,7 +21,7 @@ def parseOldGenomeFile(filename, genomeScene):
                 seqLine2 = seqLine.split(';')
                 for sequence in seqLine2:
                     seqInfo = sequence.split('=')
-                    genomeScene.createChromosome(int(seqInfo[1].rstrip(' ')), seqInfo[0].strip(' '))
+                    genomeScene.createChromosome(int(seqInfo[1].rstrip(' ')), seqInfo[0].strip(' '), 0, 0)
             elif len(line.split('\t')) > 8 and 'source' not in line.split('\t')[7]:
 
 
@@ -42,10 +42,10 @@ def parseOldGenomeFile(filename, genomeScene):
 def parseGbFile(filename, genomeScene):
     chromList = gbParser.parseGbFile(filename)
     for chrom in chromList:
-        genomeScene.createChromosome(chrom.length, chrom.name)
+        newChrom = genomeScene.createChromosome(chrom.length, chrom.name)
         for feature in chrom.features:
             # Length / position / strand / name / type / qualifierDict
-            chrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]), feature.position[2],
+            newChrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]), feature.position[2],
                              feature.id, feature.type, feature.qualifiers)
 
 
@@ -59,36 +59,32 @@ def parseBlastFile(filename, genomeScene):
             newFamily.createPoly(BlastHit)
 
 
-def parseOldBlastFile(filename, genomeScene):
-    with open(filename) as inputFile:
-        for line in inputFile:
-            if line[0] == '#':
-                pass
-            elif len(line.split('\t')) == 12:
-                blastLine = line.split('\t')
-                chrom1 = genomeScene.findChromosomeByName(blastLine[0])
-                chrom2 = genomeScene.findChromosomeByName(blastLine[1])
-                #Parent1 / Parent2 / pos1start / pos1end / pos2start / pos2end / identity
-                genomeScene.createBlastPoly(chrom1, chrom2, int(blastLine[6]),int(blastLine[7]),int(blastLine[8]), int(blastLine[9]), float(blastLine[2]))
-
-
-def saveFlexFile(genomeScene):
+def saveFlexFile(genomeScene, fileHandle):
     root = ET.Element('flexFile')
     root.set('nOfChrom', str(len(genomeScene.chrList)))
     root.set('nOfBlastFamilies', str(len(genomeScene.blastFamilies)))
+
+
+    configElement = ET.Element('config')
+    sceneElement = ET.Element('sceneRectDimensions')
+    sceneElement.set('x', str(genomeScene.sceneRect().width()))
+    sceneElement.set('y', str(genomeScene.sceneRect().height()))
+    configElement.append(sceneElement)
+    root.append(configElement)
+
 
     # Add Chromosomes from the genomeScene to the file
     for chrom in genomeScene.chrList:
         chromElement = ET.Element('Chromosome')
         chromElement.set('name', chrom.name)
-        chromElement.set('length', str(chrom.w/2))
+        chromElement.set('length', str(chrom.w))
         chromElement.set('position', (str(chrom.pos().x()) + ',' + str(chrom.pos().y())))
         #Add chromosome features from featureList
         for feature in chrom.geneList:
             featureElement = ET.Element('Feature')
             featureElement.set('name', feature.name)
             featureElement.set('length', str(feature.w))
-            featureElement.set('position', str(int(feature.pos().x() - feature.parent.pos().x())))
+            featureElement.set('position', str(feature.position))
             featureElement.set('strand', feature.strand)
             featureElement.set('type', feature.type)
             #Add qualifiers from the qualifier dict
@@ -107,10 +103,10 @@ def saveFlexFile(genomeScene):
         #Add blastPolys from blastPolyList
         for blastPoly in blastFam.blastPolyList:
             blastPolyElement = ET.Element('BlastPoly')
-            blastPolyElement.set('pos1start', str(int(blastPoly.pos1start/2)))
-            blastPolyElement.set('pos1end', str(int(blastPoly.pos1end/2)))
-            blastPolyElement.set('pos2start', str(int(blastPoly.pos2start/2)))
-            blastPolyElement.set('pos2end', str(int(blastPoly.pos2end/2)))
+            blastPolyElement.set('pos1start', str(int(blastPoly.pos1start)))
+            blastPolyElement.set('pos1end', str(int(blastPoly.pos1end)))
+            blastPolyElement.set('pos2start', str(int(blastPoly.pos2start)))
+            blastPolyElement.set('pos2end', str(int(blastPoly.pos2end)))
             blastPolyElement.set('identity', str(blastPoly.identity))
             #We'll get the chrom attributes from the geneFamily - If something does not work, start from here
             blastFamElement.append(blastPolyElement)
@@ -118,13 +114,20 @@ def saveFlexFile(genomeScene):
 
     #Write the XML Tree to a file
     elementTree = ET.ElementTree(element=root)
-    elementTree.write('test.flex')
+    elementTree.write(fileHandle)
 
 
 def loadFlexFile(filename, genomeScene):
     flexFile = ET.ElementTree(file=filename)
     # .find() finds Elements, .get() finds attributes
     root = flexFile.getroot()
+
+    sceneDim = root.find('config').find('sceneRectDimensions')
+    sceneX = float(sceneDim.get('x'))
+    sceneY = float(sceneDim.get('y'))
+    #genomeScene.setSceneRect(0, 0, sceneX, sceneY)
+
+
     #Get all chromosomes from XML file
     print(len(root.findall('Chromosome')))
     for chrom in root.findall('Chromosome'):
@@ -141,11 +144,12 @@ def loadFlexFile(filename, genomeScene):
             type = feature.get('type')
             qualifier = feature.find('Qualifiers')
             qualDict = {}
-            for qualItem in qualifier.findall():
-                qualDict[qualItem.tag] = qualItem.attrib
+            try:
+                for qualItem in qualifier:
+                    qualDict[qualItem.tag] = qualItem.attrib
+            except Exception:
+                pass
             newChrom.createGene(length, position, strand, name, type, qualDict)
-
-
 
     #Get all blast families from XML file
     for blastFam in root.findall('BlastFamily'):
@@ -155,10 +159,10 @@ def loadFlexFile(filename, genomeScene):
         chrom2 = genomeScene.findChromosomeByName(parents[1])
         #Create blastPolygons according to blastPoly tags
         for blastPoly in blastFam.findall('BlastPoly'):
-            pos1start = int(blastPoly.get('pos1start'))
-            pos1end = int(blastPoly.get('pos1end'))
-            pos2start = int(blastPoly.get('pos2start'))
-            pos2end = int(blastPoly.get('pos2end'))
+            pos1start = float(blastPoly.get('pos1start'))
+            pos1end = float(blastPoly.get('pos1end'))
+            pos2start = float(blastPoly.get('pos2start'))
+            pos2end = float(blastPoly.get('pos2end'))
             identity = float(blastPoly.get('identity'))
             newFamily.createPoly2(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity)
 
@@ -203,12 +207,9 @@ class GenomeScene(QGraphicsScene):
         self.blastFamilies = []
         #self.setSceneRect(0 , 0, 25000, 25000)
 
-    def createChromosome(self, w, name, x = 200, y = 100):
-        if len(self.chrList) > 0:
-            self.chrList.sort(key = lambda Chromosome: Chromosome.scenePos().y())
-            chr = Chromosome(x, (self.chrList[-1].scenePos().y() + self.chrList[-1].h * 2), w, name)
-        else:
-            chr = Chromosome(x, y, w, name)
+    def createChromosome(self, w, name, x, y):
+        chr = Chromosome(0, 0, w, name)
+        chr.setPos(x, y)
         self.chrList.append(chr)
         self.addItem(chr)
         self.views()[0].fitNewObject()
@@ -291,7 +292,7 @@ class GenomeViewer(QGraphicsView):
 
 
             for cds in chrom.geneList:
-                if cds.type == 'gene':
+                if cds.type == 'CDS':
                     cds.checkShape(target)
         #self.scene().views()[0].viewport().update(viewPortRect)
 
@@ -330,7 +331,7 @@ class GenomeViewer(QGraphicsView):
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, name):
         self.h = 8000
-        self.w = (w)
+        self.w = w
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
         self.ItemIsMovable = True
@@ -367,7 +368,7 @@ class Chromosome(QGraphicsRectItem):
         cds = CDS(self, w, pos, strand, name, type, qualifiers)
         self.geneList.append(cds)
         self.scene().addItem(cds)
-        self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
+        #self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
         return cds
 
 
@@ -375,12 +376,16 @@ class CDS(QGraphicsPolygonItem):
     def __init__(self, chromosome, w, pos, strand, name, type, qualifiers):
         self.h = 16000
         self.w = w
+        self.position = pos
         self.parent = chromosome
         self.qualifiers = qualifiers
         self.strand = strand
-        self.type = type
+        if type == 'CDS' or type == 'gene':
+            self.type = 'CDS'
+        else:
+            self.type = type
         self.style = None
-        x = chromosome.pos().x() + int(pos/2)
+        x = chromosome.pos().x() + int(pos)
         y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
         if self.type == 'repeat_region':
             shapes = self.calculateShapes(self.parent, pos, type = 'repeat')
@@ -475,28 +480,20 @@ class CDS(QGraphicsPolygonItem):
 
         if type == 'repeat':
             # Get Rectangle Shape
-            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() - (self.h))
-            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() - (self.h / 4))
-            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() - (self.h / 4))
-            point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() - (self.h))
+            point1 = QtCore.QPoint(self.w, self.h * -1)
+            point2 = QtCore.QPoint(self.w, (self.h / -4))
+            point3 = QtCore.QPoint(0, (self.h / -4))
+            point4 = QtCore.QPoint(0, self.h * -1)
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
             return [rectPolygon, None, None]
 
         elif type == 'misc':
             # Get Rectangle Shape
-            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() + (self.h))
-            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() + (self.h * 2))
-            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() + (self.h * 2))
-            point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() + (self.h))
+            point1 = QtCore.QPoint(self.w, self.h)
+            point2 = QtCore.QPoint(self.w, self.h * 2)
+            point3 = QtCore.QPoint(0, self.h * 2)
+            point4 = QtCore.QPoint(0, self.h)
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
             return [rectPolygon, None, None]
@@ -504,66 +501,42 @@ class CDS(QGraphicsPolygonItem):
 
         else:
             # Get Rectangle Shape
-            point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() - (self.h / 4))
-            point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                   chromosome.pos().y() + (self.h * 1))
-            point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() + (self.h * 1))
-            point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                   chromosome.pos().y() - (self.h / 4))
+            point1 = QtCore.QPoint(self.w , self.h / -4)
+            point2 = QtCore.QPoint(self.w, self.h)
+            point3 = QtCore.QPoint(0, self.h)
+            point4 = QtCore.QPoint(0, self.h/-4)
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
             # Get triangle shape
             if self.strand == '+':
-                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                       chromosome.pos().y() + (self.h / 2.5))
-                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                       chromosome.pos().y() - (self.h / 4))
-                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                       chromosome.pos().y() + self.h)
+                point1 = QtCore.QPoint(self.w, (self.h / 2.5))
+                point2 = QtCore.QPoint(0, (self.h / -4))
+                point3 = QtCore.QPoint(0, self.h)
                 trianPolygon = QtGui.QPolygonF((point1, point2, point3))
             else:
-                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                       chromosome.pos().y() + (self.h / 2.5))
-                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                       chromosome.pos().y() - (self.h / 4))
-                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                       chromosome.pos().y() + self.h)
+                point1 = QtCore.QPoint(0, (self.h / 2.5))
+                point2 = QtCore.QPoint(self.w, (self.h / -4))
+                point3 = QtCore.QPoint(self.w, self.h)
                 trianPolygon = QtGui.QPolygonF((point1, point2, point3))
 
             # Get Arrow Shape
             if self.strand == '+':
-                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                       chromosome.pos().y() + (self.h / 2.5))
-                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                       chromosome.pos().y() + self.h)
-                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                       chromosome.pos().y() + (self.parent.h * 1.5))
-                point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                       chromosome.pos().y() + (self.parent.h * 1.5))
-                point5 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                       chromosome.pos().y())
-                point6 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                       chromosome.pos().y())
-                point7 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.66),
-                                       chromosome.pos().y() - (self.h / 4))
+                point1 = QtCore.QPoint(self.w, (self.h / 2.5))
+                point2 = QtCore.QPoint((self.w * 0.66), self.h)
+                point3 = QtCore.QPoint((self.w * 0.66), (self.parent.h * 1.5))
+                point4 = QtCore.QPoint(0, (self.parent.h * 1.5))
+                point5 = QtCore.QPoint(0,0)
+                point6 = QtCore.QPoint((self.w * 0.66), 0)
+                point7 = QtCore.QPoint((self.w * 0.66), (self.h / -4))
                 arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
             else:
-                point1 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2),
-                                       chromosome.pos().y() + (self.h / 2.5))
-                point2 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                       chromosome.pos().y() + self.h)
-                point3 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                       chromosome.pos().y() + (self.parent.h * 1.5))
-                point4 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                       chromosome.pos().y() + (self.parent.h * 1.5))
-                point5 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + self.w,
-                                       chromosome.pos().y())
-                point6 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                       chromosome.pos().y())
-                point7 = QtCore.QPoint(chromosome.pos().x() + int(pos / 2) + (self.w * 0.33),
-                                       chromosome.pos().y() - (self.h / 4))
+                point1 = QtCore.QPoint(0, (self.h / 2.5))
+                point2 = QtCore.QPoint((self.w * 0.33), self.h)
+                point3 = QtCore.QPoint((self.w * 0.33), (self.parent.h * 1.5))
+                point4 = QtCore.QPoint(self.w, (self.parent.h * 1.5))
+                point5 = QtCore.QPoint(self.w, 0)
+                point6 = QtCore.QPoint((self.w * 0.33), 0)
+                point7 = QtCore.QPoint((self.w * 0.33), (self.h / -4))
                 arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
 
             return [rectPolygon, trianPolygon, arrowPolygon]
@@ -629,13 +602,6 @@ class CDS(QGraphicsPolygonItem):
             self.modifyBrush(newColor[0], newColor[1], newColor[2])
 
 
-
-
-
-
-
-
-
 class BlastFamily:
     def __init__(self, parents, genomeScene):
         self.parents = parents
@@ -681,11 +647,10 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.chrom2 = chrom2
         self.identity = identity
 
-
-        point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, (self.chrom1.pos().y()+(self.chrom1.h)))
-        point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, (self.chrom2.pos().y()+(self.chrom2.h*2)))
-        point3 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2start, (self.chrom2.pos().y()+(self.chrom2.h*2)))
-        point4 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1start, (self.chrom1.pos().y()+(self.chrom1.h)))
+        point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, self.chrom1.pos().y())
+        point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, self.chrom2.pos().y())
+        point3 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2start, self.chrom2.pos().y())
+        point4 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1start, self.chrom1.pos().y())
         polygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
         super().__init__(polygon)
@@ -701,10 +666,10 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.setPen(pen)
 
     def calculatePolygon(self):
-        point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, (self.chrom1.pos().y() + (self.chrom1.h)))
-        point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, (self.chrom2.pos().y() + (self.chrom2.h * 2)))
-        point3 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2start, (self.chrom2.pos().y() + (self.chrom2.h * 2)))
-        point4 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1start, (self.chrom1.pos().y() + (self.chrom1.h)))
+        point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, self.chrom1.pos().y())
+        point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, self.chrom2.pos().y())
+        point3 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2start, self.chrom2.pos().y())
+        point4 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1start, self.chrom1.pos().y())
         polygon = QtGui.QPolygonF((point1, point2, point3, point4))
         self.setPolygon(polygon)
 
@@ -767,7 +732,7 @@ class CDSInfoWidget(QWidget):
         #self.setGeometry(0, 0, 750, 400)
         self.setWindowTitle('CDS Info')
         self.label = QLabel()
-        pos = ((int(self.cds.pos().x() - self.cds.parent.pos().x()) * 2), int((self.cds.pos().x() - self.cds.parent.pos().x()) * 2) + self.cds.w)
+        pos = (self.cds.position, self.cds.position + self.cds.w)
         labelText = '''\
         
         Feature Name: {}
@@ -802,9 +767,9 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        parseBlastFile('M1627-M1630.plot.blastn.clean', self.scene)
-        self.scene.applyStyle('./style.txt')
+        #parseOldGenomeFile('M1627-M1630.plot', self.scene)
+        #parseBlastFile('M1627-M1630.plot.blastn.clean', self.scene)
+        #self.scene.applyStyle('./style.txt')
         #loadFlexFile('test.flex', self.scene)
         #saveFlexFile(self.scene)
 
@@ -817,20 +782,26 @@ class MainWidget(QWidget):
         openPlot = QAction('&Load Plot File', self)
         openPlot.triggered.connect(self.showPlotDialog)
 
+        openGenBank = QAction('&Parse Genbank File', self)
+        openGenBank.triggered.connect(self.showGbDialog)
+
         openBlast = QAction('&Load Blast File', self)
         openBlast.triggered.connect(self.showBlastDialog)
 
         deleteBlast = QAction('&Delete Blasts', self)
         deleteBlast.triggered.connect(self.deleteBlasts)
 
+        savePlot = QAction('&Save Plot File', self)
+        savePlot.triggered.connect(self.saveFlexFile)
+
         manageBlast = QAction('&Manage Blast Families...', self)
         manageBlast.triggered.connect(self.manageFamilies)
 
-        takeScreenshot = QAction('&Take screenshot', self)
+        takeScreenshot = QAction('&Save canvas as SVG', self)
         takeScreenshot.triggered.connect(self.saveScreenshotSVG)
 
         s = QAction('&Get Window Sizes', self)
-        s.triggered.connect(self.scrambleChrms)
+        s.triggered.connect(self.printWindowSizes)
 
 
         menuBar = QMenuBar()
@@ -838,8 +809,10 @@ class MainWidget(QWidget):
         blastMenu = menuBar.addMenu('&Blast')
         debugMenu = menuBar.addMenu('&Debug')
         fileMenu.addAction(openPlot)
+        fileMenu.addAction(savePlot)
         fileMenu.addAction(openBlast)
         fileMenu.addAction(takeScreenshot)
+        fileMenu.addAction(openGenBank)
         blastMenu.addAction(manageBlast)
         blastMenu.addAction(deleteBlast)
         debugMenu.addAction(s)
@@ -865,19 +838,29 @@ class MainWidget(QWidget):
         window._exec()
 
     def showBlastDialog(self):
-        blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', '/home')
+        blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', './')
         if blastHandle[0]:
-            parseOldBlastFile(blastHandle[0], self.scene)
+            parseBlastFile(blastHandle[0], self.scene)
 
     def showPlotDialog(self):
-        plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', '/home')
+        plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', './')
         if plotHandle[0]:
             try:
                 newScene = GenomeScene()
-                parseOldGenomeFile(plotHandle[0], GenomeScene)
+                self.view.setScene(newScene)
+                if plotHandle[0].split('.')[-1] == 'plot':
+                    parseOldGenomeFile(plotHandle[0], newScene)
+                elif plotHandle[0].split('.')[-1] == 'flex':
+                    loadFlexFile(plotHandle[0], newScene)
+                #newScene.applyStyle('./style.txt')
                 self.scene = newScene
-            except Exception:
-                pass
+                #self.view = newView
+                self.view.update()
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
+                self.view.setScene(self.scene)
+
 
     def deleteBlasts(self):
         for blast in self.scene.blastFamilies:
@@ -905,6 +888,16 @@ class MainWidget(QWidget):
         self.view.render(painter)
         painter.end()
 
+    def saveFlexFile(self):
+        fileHandle = QFileDialog.getSaveFileName(self, 'Select Directory to save', './')
+        if fileHandle[0]:
+            saveFlexFile(self.scene, fileHandle[0])
+
+    def showGbDialog(self):
+        plotHandle = QFileDialog.getOpenFileName(self, 'Select Genbank File', './')
+        if plotHandle[0]:
+            parseGbFile(plotHandle[0], self.scene)
+
 
 
     def printWindowSizes(self):
@@ -914,6 +907,10 @@ class MainWidget(QWidget):
         print('ViewportSize', self.view.viewport().width(), 'x', self.view.viewport().height())
         print('ScenerectSize', int(self.scene.sceneRect().width()), 'x', int(self.scene.sceneRect().height()))
         print(visibleSceneRect.width(), visibleSceneRect.height())
+        print('Chromosome positions')
+        for chr in self.scene.chrList:
+            print('pos:', chr.name, chr.pos().x(), 'x', chr.pos().y())
+            print('scenePos:', chr.name, chr.scenePos().x(), 'x', chr.scenePos().y())
 
     def scrambleChrms(self):
         for chr in self.scene.chrList:
