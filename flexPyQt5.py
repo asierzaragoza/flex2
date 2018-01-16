@@ -1,6 +1,6 @@
 import sys, random, traceback
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
-    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel
+    QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog
 
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
@@ -42,7 +42,7 @@ def parseOldGenomeFile(filename, genomeScene):
 def parseGbFile(filename, genomeScene):
     chromList = gbParser.parseGbFile(filename)
     for chrom in chromList:
-        newChrom = genomeScene.createChromosome(chrom.length, chrom.name)
+        newChrom = genomeScene.createChromosome(chrom.length, chrom.name, 0, 0)
         for feature in chrom.features:
             # Length / position / strand / name / type / qualifierDict
             newChrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]), feature.position[2],
@@ -222,14 +222,6 @@ class GenomeScene(QGraphicsScene):
         self.blastFamilies.append(newFamily)
         return newFamily
 
-
-    '''
-    def createBlastPoly(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end):
-        blastPoly = BlastPolygon(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end)
-        self.blastFamilies.append(blastPoly)
-        self.addItem(blastPoly)
-    '''
-
     def findChromosomeByName(self, name):
         target = name
         for chr in self.chrList:
@@ -299,7 +291,7 @@ class GenomeViewer(QGraphicsView):
     def mousePressEvent(self, QMouseEvent):
         if QMouseEvent.button() == QtCore.Qt.MiddleButton:
             self.panning = True
-            self.panPos = (QMouseEvent.x(), QMouseEvent.y())
+            self.panPos = (QMouseEvent.screenPos().x(), QMouseEvent.screenPos().y())
 
         else:
             QGraphicsView.mousePressEvent(self, QMouseEvent)
@@ -308,10 +300,17 @@ class GenomeViewer(QGraphicsView):
 
     def mouseMoveEvent(self, QMouseEvent):
         if self.panning == True:
-            xdiff = (QMouseEvent.x() - self.panPos[0]) * self.zoomLvl * 5
-            ydiff = (QMouseEvent.y() - self.panPos[1]) * self.zoomLvl * 5
+
+            viewPortRect = QtCore.QRect(0, 0, self.scene().views()[0].viewport().width(),
+                                        self.scene().views()[0].viewport().height())
+            visibleSceneRectWidth = int(self.scene().views()[0].mapToScene(viewPortRect).boundingRect().width())
+            viewportWidth = int(self.scene().views()[0].viewport().width())
+            target = viewportWidth / visibleSceneRectWidth
+
+            xdiff = (QMouseEvent.screenPos().x() - self.panPos[0]) * 1/target
+            ydiff = (QMouseEvent.screenPos().y() - self.panPos[1]) * 1/target
             self.translate(xdiff, ydiff)
-            self.panPos = (QMouseEvent.x(), QMouseEvent.y())
+            self.panPos = (QMouseEvent.screenPos().x(), QMouseEvent.screenPos().y())
 
         else:
             QGraphicsView.mouseMoveEvent(self, QMouseEvent)
@@ -330,7 +329,7 @@ class GenomeViewer(QGraphicsView):
 
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, name):
-        self.h = 8000
+        self.h = 4000
         self.w = w
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
@@ -368,13 +367,13 @@ class Chromosome(QGraphicsRectItem):
         cds = CDS(self, w, pos, strand, name, type, qualifiers)
         self.geneList.append(cds)
         self.scene().addItem(cds)
-        #self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
+        self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
         return cds
 
 
 class CDS(QGraphicsPolygonItem):
     def __init__(self, chromosome, w, pos, strand, name, type, qualifiers):
-        self.h = 16000
+        self.h = 8000
         self.w = w
         self.position = pos
         self.parent = chromosome
@@ -636,6 +635,12 @@ class BlastFamily:
         self.genomeScene.blastFamilies.remove(self)
         del self
 
+    def changeBlastColor(self, color):
+        for blast in self.blastPolyList:
+            blast.brush = QtGui.QBrush(color)
+            blast.setBrush(QtGui.QBrush(color))
+            blast.changeSaturation()
+
 
 class BlastPolygon(QGraphicsPolygonItem):
     def __init__(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity):
@@ -646,6 +651,7 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.chrom1 = chrom1
         self.chrom2 = chrom2
         self.identity = identity
+        self.brush = QtGui.QBrush(QtCore.Qt.darkRed)
 
         point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, self.chrom1.pos().y())
         point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, self.chrom2.pos().y())
@@ -654,7 +660,8 @@ class BlastPolygon(QGraphicsPolygonItem):
         polygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
         super().__init__(polygon)
-        self.setBrush(QtGui.QBrush(QtCore.Qt.darkRed))
+        self.setBrush(self.brush)
+        self.changeSaturation()
         self.setAcceptHoverEvents(True)
         self.setZValue(1.0)
         self.tooltip = self.createTooltip()
@@ -678,12 +685,29 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.setToolTip(self.tooltip)
 
     def hoverLeaveEvent(self, QGraphicsSceneHoverEvent):
-        self.setBrush(QtGui.QBrush(QtCore.Qt.darkRed))
+        self.setBrush(self.brush)
 
     def createTooltip(self):
         tooltip = (self.chrom1.name+ '\n' + str(int(self.pos1start/2)) + ' - ' + str(int(self.pos1end/2)) + '\n\n' +
             self.chrom2.name+'\n' + str(int(self.pos2start/2)) + ' - ' + str(int(self.pos2end/2)) + '\n')
         return tooltip
+
+    def changeSaturation(self):
+        oldColor = self.brush.color().toHsv()
+        identityValue = float(self.identity) / 100
+        newSat = oldColor.saturation()
+        newVal = oldColor.value()
+        print(newSat, newVal, identityValue)
+        if newSat > 0:
+            newSat = int(oldColor.saturation() * identityValue)
+        if newVal < 255:
+            newVal = int(oldColor.value() * (1/identityValue))
+        print(newSat, newVal)
+        newColor = QtGui.QColor().fromHsv(oldColor.hue(), newSat, newVal, 255)
+        newBrush = QtGui.QBrush(newColor)
+        self.brush = newBrush
+        self.setBrush(newBrush)
+
 
 
 class BlastFamilyWidget(QWidget):
@@ -718,6 +742,29 @@ class BlastFamilyWidget(QWidget):
 
         layVBox = QVBoxLayout()
         layVBox.addWidget(self.blastTable)
+        self.setLayout(layVBox)
+        self.show()
+
+
+class GBInfoWidget(QWidget):
+    def __init__(self, gbList):
+        super().__init__()
+        self.gbList = gbList
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Parse Genbank Files')
+        self.label = QLabel()
+        self.label.setText('The following sequences were found:')
+        self.label2 = QLabel()
+        labelText = ''
+        for gb in self.gbList:
+            labelText += str(gb) + '\n'
+        self.label2.setText(labelText)
+        layVBox = QVBoxLayout()
+        layVBox.addWidget(self.label)
+        layVBox.addWidget(self.label2)
+
         self.setLayout(layVBox)
         self.show()
 
@@ -767,6 +814,7 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
+        parseGbFile('./V97-phage.genbank', self.scene)
         #parseOldGenomeFile('M1627-M1630.plot', self.scene)
         #parseBlastFile('M1627-M1630.plot.blastn.clean', self.scene)
         #self.scene.applyStyle('./style.txt')
@@ -797,8 +845,11 @@ class MainWidget(QWidget):
         manageBlast = QAction('&Manage Blast Families...', self)
         manageBlast.triggered.connect(self.manageFamilies)
 
-        takeScreenshot = QAction('&Save canvas as SVG', self)
-        takeScreenshot.triggered.connect(self.saveScreenshotSVG)
+        changeBlastColor = QAction('&Change Blast Color', self)
+        changeBlastColor.triggered.connect(self._changeBlastColor)
+
+        takeScreenshot = QAction('&Save canvas as image', self)
+        takeScreenshot.triggered.connect(self.saveScreenshotDialog)
 
         s = QAction('&Get Window Sizes', self)
         s.triggered.connect(self.printWindowSizes)
@@ -815,6 +866,7 @@ class MainWidget(QWidget):
         fileMenu.addAction(openGenBank)
         blastMenu.addAction(manageBlast)
         blastMenu.addAction(deleteBlast)
+        blastMenu.addAction(changeBlastColor)
         debugMenu.addAction(s)
 
         layVBox = QVBoxLayout()
@@ -838,12 +890,13 @@ class MainWidget(QWidget):
         window._exec()
 
     def showBlastDialog(self):
-        blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', './')
+        blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', './', 'Blast Files (*.blastn *.plot.blastn.clean' +
+                '*.blastp *.plot.blastp.clean) ;; All Files (*.*)')
         if blastHandle[0]:
             parseBlastFile(blastHandle[0], self.scene)
 
     def showPlotDialog(self):
-        plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', './')
+        plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', './', 'Flex Files (*.plot *.flex)')
         if plotHandle[0]:
             try:
                 newScene = GenomeScene()
@@ -866,7 +919,16 @@ class MainWidget(QWidget):
         for blast in self.scene.blastFamilies:
             blast.deleteFamily()
 
-    def saveScreenshotPNG(self):
+    def saveScreenshotDialog(self):
+        scPath = QFileDialog.getSaveFileName(self, 'Select Directory to save', './', 'PNG Format (*.png) ;; SVG Format (*.svg) ;; All Files (*.*)')
+        if scPath[1] == 'PNG Format (*.png)':
+            self.saveScreenshotPNG(scPath[0])
+        else:
+            self.saveScreenshotSVG(scPath[0])
+
+
+
+    def saveScreenshotPNG(self, path):
         self.scene.clearSelection()
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
         image = QtGui.QImage(self.view.size().width(), self.view.size().height(), QtGui.QImage.Format_ARGB32)
@@ -874,13 +936,13 @@ class MainWidget(QWidget):
         painter.fillRect(image.rect(), QtGui.QBrush(QtCore.Qt.white))
         self.view.render(painter)
         painter.end()
-        image.save('./test.png')
+        image.save(path + '.png')
 
-    def saveScreenshotSVG(self):
+    def saveScreenshotSVG(self, path):
         self.scene.clearSelection()
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
         svgGen = QtSvg.QSvgGenerator()
-        svgGen.setFileName('./test2.svg')
+        svgGen.setFileName(path + '.svg')
         svgGen.setSize(QtCore.QSize(self.view.size().width(), self.view.size().height()))
         painter = QtGui.QPainter(self.view)
         painter.begin(svgGen)
@@ -894,9 +956,13 @@ class MainWidget(QWidget):
             saveFlexFile(self.scene, fileHandle[0])
 
     def showGbDialog(self):
-        plotHandle = QFileDialog.getOpenFileName(self, 'Select Genbank File', './')
+        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff) ;; All Files (*.*)')
+        print(plotHandle)
         if plotHandle[0]:
-            parseGbFile(plotHandle[0], self.scene)
+            gbList = gbParser.getGbRecords(plotHandle[0])
+
+            window = GBInfoWidget(gbList)
+            window._exec()
 
 
 
@@ -911,6 +977,11 @@ class MainWidget(QWidget):
         for chr in self.scene.chrList:
             print('pos:', chr.name, chr.pos().x(), 'x', chr.pos().y())
             print('scenePos:', chr.name, chr.scenePos().x(), 'x', chr.scenePos().y())
+
+    def _changeBlastColor(self):
+        newColor = QColorDialog.getColor()
+        for blastFamily in self.scene.blastFamilies:
+            blastFamily.changeBlastColor(newColor)
 
     def scrambleChrms(self):
         for chr in self.scene.chrList:

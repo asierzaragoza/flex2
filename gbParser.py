@@ -134,6 +134,15 @@ for gbRecord in gbFiles:
     print(str(newFosmid.returnFeatureTypes()))
 '''
 
+def getGbRecords(filenames):
+    gbFiles = []
+    for file in filenames:
+        with open(file, 'r') as filehandle:
+            inputFile = SeqIO.parse(filehandle, 'genbank')
+            for record in inputFile:
+                gbFiles.append(record.id)
+    return gbFiles
+
 def parseGbFile(filename):
     gbFiles = []
     with open(filename, 'r') as filehandle:
@@ -143,7 +152,7 @@ def parseGbFile(filename):
         print(len(gbFiles), 'records from', len(inputFiles), 'file(s) in input\n')
     fosmidList = []
     for gbRecord in gbFiles:
-        newFosmid = Fosmid(name=gbRecord.id, length=gbRecord.features[0].location.end, seq=gbRecord.seq)
+        newFosmid = Fosmid(name=gbRecord.id, length=len(gbRecord.seq), seq=gbRecord.seq)
         featureList = gbRecord.features
         for rawFeature in featureList:
             newFeature = Feature(newFosmid, rawFeature)
