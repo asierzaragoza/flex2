@@ -1,7 +1,7 @@
 import sys, random, traceback
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
-    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout
+    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView
 
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
@@ -724,6 +724,7 @@ class BlastFamilyWidget(QWidget):
         self.blastTable.setColumnCount(4)
         self.blastTable.setHorizontalHeaderLabels(['Sequence 1', 'Sequence 2', 'Nº of Blasts', 'Visible?'])
         self.blastTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.blastTable.setSelectionBehavior(QTableView.SelectRows)
         for i in range(0, len(self.blastList)):
 
             parent1Cell = QTableWidgetItem(self.blastList[i].parents[0])
