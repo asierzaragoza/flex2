@@ -762,6 +762,60 @@ class BlastFamilyWidget(QWidget):
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
+
+class BlastInfoWidget(QWidget):
+
+    def __init__(self, chrList):
+        super().__init__()
+        self.setGeometry(0, 0, 600, 350)
+        self.chrList = chrList
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Perform Blast Comparison')
+
+        self.label = QLabel()
+        self.label.setText('Sequences in current scene:')
+
+        self.chrTable = QTableWidget()
+        self.chrTable.setRowCount(len(self.chrList))
+        self.chrTable.setColumnCount(3)
+        self.chrTable.setHorizontalHeaderLabels(['Name', 'Length', 'Select?'])
+        self.chrTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.chrTable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.chrTable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+
+        for i in range(0, len(self.chrList)):
+            idCell = QTableWidgetItem(self.chrList[i].name)
+            lengthCell = QTableWidgetItem(len(self.chrList[i].seq))
+            parseCell = QCheckBox(self.chrTable)
+            parseCell.setTristate(False)
+            parseCell.setCheckState(QtCore.Qt.Checked)
+            self.gbTable.setItem(i, 0, idCell)
+            self.gbTable.setItem(i, 1, lengthCell)
+            self.gbTable.setCellWidget(i, 2, parseCell)
+
+        self.settingsButton = QPushButton('Blast Options...')
+        self.blastButton = QPushButton('Start Blast')
+
+        self.settingsButton.clicked.connect(self.getBlastSettings)
+
+        layHBox = QHBoxLayout()
+        layHBox.addWidget(self.settingsButton)
+        layHBox.addWidget(self.blastButton)
+
+        layVBox = QVBoxLayout()
+        layVBox.addWidget(self.label)
+        layVBox.addWidget(self.chrTable)
+        layVBox.addLayout(layHBox)
+
+        self.setLayout(layVBox)
+        self.center()
+
+    def getBlastSettings(self):
+        pass
+
+
 class GBInfoWidget(QWidget):
 
     gbInfoTrigger = QtCore.pyqtSignal(list)
@@ -795,7 +849,6 @@ class GBInfoWidget(QWidget):
             parseCell = QCheckBox(self.gbTable)
             parseCell.setTristate(False)
             parseCell.setCheckState(QtCore.Qt.Checked)
-
             self.gbTable.setItem(i, 0, fileCell)
             self.gbTable.setItem(i, 1, idCell)
             self.gbTable.setCellWidget(i, 2, parseCell)
@@ -818,7 +871,7 @@ class GBInfoWidget(QWidget):
 
         self.setLayout(layVBox)
         self.center()
-        self.show()
+
 
     def clickingParse(self):
         self.getSelectedSeqs()
@@ -1028,6 +1081,9 @@ class MainWidget(QWidget):
         deleteBlast = QAction('&Delete Blasts', self)
         deleteBlast.triggered.connect(self.deleteBlasts)
 
+        performBlast = QAction('Perform Blast...', self)
+        performBlast.triggered.connect(self.getBlasts)
+
         savePlot = QAction('&Save Plot File', self)
         savePlot.triggered.connect(self.saveFlexFile)
 
@@ -1056,6 +1112,7 @@ class MainWidget(QWidget):
         fileMenu.addAction(styleLoad)
         fileMenu.addAction(takeScreenshot)
         fileMenu.addAction(openGenBank)
+        blastMenu.addAction(performBlast)
         blastMenu.addAction(openBlast)
         blastMenu.addAction(manageBlast)
         blastMenu.addAction(deleteBlast)
@@ -1111,6 +1168,10 @@ class MainWidget(QWidget):
         for blast in self.scene.blastFamilies:
             blast.deleteFamily()
 
+    def getBlasts(self):
+        self.window = BlastInfoWidget(self.scene.chrList)
+        self.window.show()
+
     def saveScreenshotDialog(self):
         scPath = QFileDialog.getSaveFileName(self, 'Select Directory to save', './', 'PNG Format (*.png) ;; SVG Format (*.svg) ;; All Files (*.*)')
         if scPath[1] == 'PNG Format (*.png)':
@@ -1148,14 +1209,10 @@ class MainWidget(QWidget):
     def showGbDialog(self):
         plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff *.gbk) ;; All Files (*.*)')
         if plotHandle[0]:
-
-
-            gbFiles = []
             gbList = gbParser.getGbRecords(plotHandle[0])
             self.window = GBInfoWidget(gbList)
             self.window.gbInfoTrigger.connect(self.processGenbanks)
             self.window.show()
-
 
     def processGenbanks(self, list):
         blastSettings = list[1]
