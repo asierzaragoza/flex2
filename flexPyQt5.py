@@ -447,8 +447,8 @@ class CDS(QGraphicsPolygonItem):
         self.setBrush(QtGui.QBrush(self.style))
 
     def mouseDoubleClickEvent(self, QGraphicsSceneMouseEvent):
-        window = CDSInfoWidget(cds = self)
-        window._exec()
+        self.window = CDSInfoWidget(cds = self)
+        self.window.show()
 
     def checkShape(self, target=None):
         if target is None:
@@ -590,7 +590,7 @@ class CDS(QGraphicsPolygonItem):
                 print('trying qualifiers')
                 try:
                     cdsValue = self.qualifiers[order['class2']]
-                    if str(order['delimiter']) in str(cdsValue):
+                    if str(order['delimiter'].rstrip()) in str(cdsValue):
                         print('painted! - qualifier', order['color'][0], order['color'][1], order['color'][2])
                         newColor = [order['color'][0], order['color'][1], order['color'][2]]
                     else:
@@ -714,11 +714,15 @@ class BlastFamilyWidget(QWidget):
     def __init__(self, blastList):
         super().__init__()
         self.blastList = blastList
+        self.setWindowModality(QtCore.Qt.ApplicationModal)
+
         self.initUI()
 
     def initUI(self):
+
         self.setGeometry(0, 0, 350, 400)
         self.setWindowTitle('Manage Blasts')
+
         self.blastTable = QTableWidget()
         self.blastTable.setRowCount(len(self.blastList))
         self.blastTable.setColumnCount(4)
@@ -745,23 +749,36 @@ class BlastFamilyWidget(QWidget):
             self.blastTable.setItem(i, 2, nOfBlastsCell)
 
 
+
         layVBox = QVBoxLayout()
         layVBox.addWidget(self.blastTable)
         self.setLayout(layVBox)
+        self.center()
         self.show()
 
+    def center(self):
+        qr = self.frameGeometry()
+        cp = QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
 
 class GBInfoWidget(QWidget):
+
+    gbInfoTrigger = QtCore.pyqtSignal(list)
+
     def __init__(self, gbList):
         super().__init__()
         self.setGeometry(0, 0, 600, 350)
         self.gbList = gbList
+        self.blastSettings = {'blastType': 'blastn', 'blastMatrix': 'BLOSUM62', 'minIdent': '90.0', 'minAln': 'auto',
+                              'mergeAdj': [False, 0], 'saveFile': False}
         self.initUI()
 
     def initUI(self):
         self.setWindowTitle('Parse Genbank Files')
         self.label = QLabel()
         self.label.setText('The following sequences were found:')
+
 
         self.gbTable = QTableWidget()
         self.gbTable.setRowCount(len(self.gbList))
@@ -787,6 +804,7 @@ class GBInfoWidget(QWidget):
         self.parseButton = QPushButton('Parse!')
 
         self.blastButton.clicked.connect(self.getBlastSettings)
+        self.parseButton.clicked.connect(self.clickingParse)
 
 
         layHBox = QHBoxLayout()
@@ -799,19 +817,46 @@ class GBInfoWidget(QWidget):
         layVBox.addLayout(layHBox)
 
         self.setLayout(layVBox)
+        self.center()
         self.show()
 
+    def clickingParse(self):
+        self.getSelectedSeqs()
+        print(self.blastSettings)
+
+    def center(self):
+        qr = self.frameGeometry()
+        cp = QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
+
     def getBlastSettings(self):
-        window = BlastSettingsWidget()
-        window._exec()
+        self.window = BlastSettingsWidget()
+        self.window.show()
+        self.window.blastSettingsTrigger.connect(self.storeBlastSettings)
+
+    def storeBlastSettings(self, dict):
+        self.blastSettings = dict
+        print(dict)
+
+    def getSelectedSeqs(self):
+        finalTable = []
+        for i in range(0, self.gbTable.rowCount()):
+            if self.gbTable.cellWidget(i, 2).isChecked() == True:
+                print(i, 'Honk!')
+                items = [self.gbTable.item(i,0).text(), self.gbTable.item(i,1).text()]
+                finalTable.append(items)
+        self.gbInfoTrigger.emit([finalTable, self.blastSettings])
+        self.close()
 
 
 class BlastSettingsWidget(QWidget):
+    blastSettingsTrigger = QtCore.pyqtSignal(dict)
     def __init__(self):
         super().__init__()
         self.setGeometry(0, 0, 600, 200)
-        self.blastSettings = {'blastType':'blastn', 'blastMatrix':'BLOSUM62', 'minIdent':'90.0', 'minAln':'auto', 'mergeAdj':[False, 0],
-                              'saveFile':False}
+        self.blastSettings = {'blastType':'blastn', 'blastMatrix':'BLOSUM62', 'minIdent':'90.0', 'minAln':'auto',
+                             'mergeAdj':[False, 0], 'saveFile':False}
         self.initUI()
 
     def initUI(self):
@@ -859,6 +904,7 @@ class BlastSettingsWidget(QWidget):
         self.checkSaveFiles.setTristate(False)
 
         self.buttonSave = QPushButton('Save and exit')
+        self.buttonSave.clicked.connect(self.saveSettings)
         self.buttonExit = QPushButton('Cancel')
 
         layGbox = QGridLayout()
@@ -880,7 +926,14 @@ class BlastSettingsWidget(QWidget):
 
         self.setLayout(layGbox)
 
+        self.center()
         self.show()
+
+    def center(self):
+        qr = self.frameGeometry()
+        cp = QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
 
     def checkAdjBlastsButton(self):
         if self.checkMergeBlasts.isChecked() == True:
@@ -890,6 +943,21 @@ class BlastSettingsWidget(QWidget):
             self.linEditMergeBlasts.setReadOnly(True)
             self.linEditMergeBlasts.setText('')
 
+    def saveSettings(self):
+        print(self.blastSettings)
+        if self.buttonTblastx.isChecked() == True:
+            self.blastSettings['blastType'] = 'tblastx'
+            self.blastSettings['blastMatrix'] = self.comboMatrix.currentText()
+
+        self.blastSettings['minIdent'] = self.linEditMinIdent.text()
+        self.blastSettings['minAln'] = self.linEditMinAln.text()
+        if self.checkMergeBlasts.isChecked() == True:
+            self.blastSettings['mergeAdj'][0] = True
+            self.blastSettings['mergeAdj'][1] = self.linEditMergeBlasts.text()
+        if self.checkSaveFiles.isChecked() == True:
+            self.blastSettings['saveFile'] = True
+        self.blastSettingsTrigger.emit(self.blastSettings)
+        self.close()
 
 
 class CDSInfoWidget(QWidget):
@@ -920,8 +988,6 @@ class CDSInfoWidget(QWidget):
         layVBox = QVBoxLayout()
         layVBox.addWidget(self.label)
         self.setLayout(layVBox)
-
-        self.show()
 
 
 
@@ -974,6 +1040,9 @@ class MainWidget(QWidget):
         takeScreenshot = QAction('&Save canvas as image', self)
         takeScreenshot.triggered.connect(self.saveScreenshotDialog)
 
+        styleLoad = QAction('&Load style file', self)
+        styleLoad.triggered.connect(self.loadStyleFile)
+
         s = QAction('&Get Window Sizes', self)
         s.triggered.connect(self.printWindowSizes)
 
@@ -984,9 +1053,10 @@ class MainWidget(QWidget):
         debugMenu = menuBar.addMenu('&Debug')
         fileMenu.addAction(openPlot)
         fileMenu.addAction(savePlot)
-        fileMenu.addAction(openBlast)
+        fileMenu.addAction(styleLoad)
         fileMenu.addAction(takeScreenshot)
         fileMenu.addAction(openGenBank)
+        blastMenu.addAction(openBlast)
         blastMenu.addAction(manageBlast)
         blastMenu.addAction(deleteBlast)
         blastMenu.addAction(changeBlastColor)
@@ -1001,7 +1071,6 @@ class MainWidget(QWidget):
         self.center()
         self.show()
 
-
     def center(self):
         qr = self.frameGeometry()
         cp = QDesktopWidget().availableGeometry().center()
@@ -1009,8 +1078,9 @@ class MainWidget(QWidget):
         self.move(qr.topLeft())
 
     def manageFamilies(self):
-        window = BlastFamilyWidget(self.scene.blastFamilies)
-        window._exec()
+        self.window = BlastFamilyWidget(self.scene.blastFamilies)
+        self.window.show()
+        self.signal1 = self.window
 
     def showBlastDialog(self):
         blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', './', 'Blast Files (*.blastn *.plot.blastn.clean' +
@@ -1037,7 +1107,6 @@ class MainWidget(QWidget):
                 traceback.print_exc()
                 self.view.setScene(self.scene)
 
-
     def deleteBlasts(self):
         for blast in self.scene.blastFamilies:
             blast.deleteFamily()
@@ -1048,8 +1117,6 @@ class MainWidget(QWidget):
             self.saveScreenshotPNG(scPath[0])
         else:
             self.saveScreenshotSVG(scPath[0])
-
-
 
     def saveScreenshotPNG(self, path):
         self.scene.clearSelection()
@@ -1080,14 +1147,36 @@ class MainWidget(QWidget):
 
     def showGbDialog(self):
         plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff *.gbk) ;; All Files (*.*)')
-        print(plotHandle)
         if plotHandle[0]:
+
+
+            gbFiles = []
             gbList = gbParser.getGbRecords(plotHandle[0])
+            self.window = GBInfoWidget(gbList)
+            self.window.gbInfoTrigger.connect(self.processGenbanks)
+            self.window.show()
 
-            window = GBInfoWidget(gbList)
-            window._exec()
 
+    def processGenbanks(self, list):
+        blastSettings = list[1]
+        seqList = list[0]
 
+        #create dictionary
+        seqDict = {}
+        for seq in seqList:
+            if seq[0] not in seqDict.keys():
+                seqDict[seq[0]] = [seq[1]]
+            else:
+                seqDict[seq[0]].append(seq[1])
+        chromList = gbParser.parseGbFiles(seqDict.keys(), seqDict)
+        print(len(chromList), 'sequences')
+        for chrom in chromList:
+            print(len(chrom.seq))
+
+    def loadStyleFile(self):
+        styleHandle = QFileDialog.getOpenFileName(self, 'Select Style File', './', 'Text Files (*.txt) ;; All Files (*.*)')
+        if styleHandle[0]:
+            self.scene.applyStyle(styleHandle[0])
 
     def printWindowSizes(self):
         viewPortRect = QtCore.QRect(0, 0, self.view.viewport().width(), self.view.viewport().height())
