@@ -1,4 +1,4 @@
-import sys, random, traceback
+import sys, random, traceback, subprocess
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
     QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView
@@ -34,7 +34,11 @@ def parseOldGenomeFile(filename, genomeScene):
                 chr.createGene((int(cdsLine[4])-int(cdsLine[3])), int(cdsLine[3]), cdsLine[5], cdsLine[1], cdsLine[2],
                                qualDict)
 
-                pass
+            elif 'source' in line.split('\t')[7]:
+                cdsLine = line.split('\t')
+                chr = genomeScene.findChromosomeByName(cdsLine[0])
+                chr.sequence = str(cdsLine[8])
+
             else:
                 print('line not processed')
                 pass
@@ -80,6 +84,7 @@ def saveFlexFile(genomeScene, fileHandle):
         chromElement.set('name', chrom.name)
         chromElement.set('length', str(chrom.w))
         chromElement.set('position', (str(chrom.pos().x()) + ',' + str(chrom.pos().y())))
+        chromElement.set('sequence', chrom.sequence)
         #Add chromosome features from featureList
         for feature in chrom.geneList:
             featureElement = ET.Element('Feature')
@@ -135,7 +140,8 @@ def loadFlexFile(filename, genomeScene):
         name = chrom.get('name')
         length = int(float(chrom.get('length')))
         position = chrom.get('position').split(',')
-        newChrom = genomeScene.createChromosome(length, name, float(position[0]), float(position[1]))
+        sequence = chrom.get('sequence')
+        newChrom = genomeScene.createChromosome(length, name, float(position[0]), float(position[1]), sequence)
         #Create genes according to feature tags
         for feature in chrom.findall('Feature'):
             name = feature.get('name')
@@ -143,13 +149,15 @@ def loadFlexFile(filename, genomeScene):
             strand = feature.get('strand')
             position = int(feature.get('position'))
             type = feature.get('type')
-            qualifier = feature.find('Qualifiers')
+            qualifier = feature.findall('Qualifiers')
             qualDict = {}
             try:
                 for qualItem in qualifier:
-                    qualDict[qualItem.tag] = qualItem.attrib
-            except Exception:
-                pass
+                    for item in qualItem.attrib.items():
+                        qualDict[item[0]] = item[1]
+
+            except Exception as e:
+                print(e)
             newChrom.createGene(length, position, strand, name, type, qualDict)
 
     #Get all blast families from XML file
@@ -169,6 +177,8 @@ def loadFlexFile(filename, genomeScene):
 
     print('Done!')
 
+def runBlastOnSeqs(filename, blastPath, blastSettings):
+    pass
 
 def parseStyleFile(filename):
     paintOrderList = []
@@ -208,8 +218,8 @@ class GenomeScene(QGraphicsScene):
         self.blastFamilies = []
         #self.setSceneRect(0 , 0, 25000, 25000)
 
-    def createChromosome(self, w, name, x, y):
-        chr = Chromosome(0, 0, w, name)
+    def createChromosome(self, w, name, x, y, sequence = None):
+        chr = Chromosome(0, 0, w, name, sequence)
         chr.setPos(x, y)
         self.chrList.append(chr)
         self.addItem(chr)
@@ -329,7 +339,7 @@ class GenomeViewer(QGraphicsView):
 
 
 class Chromosome(QGraphicsRectItem):
-    def __init__(self, x, y, w, name):
+    def __init__(self, x, y, w, name, sequence=None):
         self.h = 4000
         self.w = w
         super().__init__(x, y, self.w, self.h)
@@ -340,6 +350,7 @@ class Chromosome(QGraphicsRectItem):
         self.geneList = []
         self.blastList = []
         self.name = name
+        self.sequence = sequence
         self.setBrush(QtGui.QBrush(QtCore.Qt.darkGray))
         self.setZValue(2.0)
 
@@ -571,7 +582,11 @@ class CDS(QGraphicsPolygonItem):
                 print('invalid type', order['type'], self.type)
                 continue
             #Classify by length
-            if order['class'] == 'length':
+            if order['class'] == None:
+                newColor = [order['color'][0], order['color'][1], order['color'][2]]
+                self.modifyBrush(newColor[0], newColor[1], newColor[2])
+                continue
+            elif order['class'] == 'length':
                 print('trying length')
                 if order['class2'] == '>':
                     if self.w > int(order['delimiter']):
@@ -590,6 +605,7 @@ class CDS(QGraphicsPolygonItem):
                 print('trying qualifiers')
                 try:
                     cdsValue = self.qualifiers[order['class2']]
+
                     if str(order['delimiter'].rstrip()) in str(cdsValue):
                         print('painted! - qualifier', order['color'][0], order['color'][1], order['color'][2])
                         newColor = [order['color'][0], order['color'][1], order['color'][2]]
@@ -689,8 +705,8 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.setBrush(self.brush)
 
     def createTooltip(self):
-        tooltip = (self.chrom1.name+ '\n' + str(int(self.pos1start/2)) + ' - ' + str(int(self.pos1end/2)) + '\n\n' +
-            self.chrom2.name+'\n' + str(int(self.pos2start/2)) + ' - ' + str(int(self.pos2end/2)) + '\n')
+        tooltip = (self.chrom1.name+ '\n' + str(int(self.pos1start)) + ' - ' + str(int(self.pos1end)) + '\n\n' +
+            self.chrom2.name+'\n' + str(int(self.pos2start)) + ' - ' + str(int(self.pos2end)) + '\n')
         return tooltip
 
     def changeSaturation(self):
@@ -1036,7 +1052,8 @@ class CDSInfoWidget(QWidget):
         FEATURE QUALIFIERS:\
                     '''.format(self.cds.name, self.cds.parent.name,self.cds.type, (str(pos[0]) + ' - ' + str(pos[1])), self.cds.w, self.cds.strand)
         for key in self.cds.qualifiers:
-            labelText += '\n\t\t{}: {}'.format(key, self.cds.qualifiers[key])
+            if key != 'translation':
+                labelText += '\n\t\t{}: {}'.format(key, self.cds.qualifiers[key])
         self.label.setText(labelText)
         layVBox = QVBoxLayout()
         layVBox.addWidget(self.label)
@@ -1207,7 +1224,7 @@ class MainWidget(QWidget):
             saveFlexFile(self.scene, fileHandle[0])
 
     def showGbDialog(self):
-        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff *.gbk) ;; All Files (*.*)')
+        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff *.gbk *.pgbk) ;; All Files (*.*)')
         if plotHandle[0]:
             gbList = gbParser.getGbRecords(plotHandle[0])
             self.window = GBInfoWidget(gbList)
@@ -1228,7 +1245,11 @@ class MainWidget(QWidget):
         chromList = gbParser.parseGbFiles(seqDict.keys(), seqDict)
         print(len(chromList), 'sequences')
         for chrom in chromList:
-            print(len(chrom.seq))
+            newChrom = self.scene.createChromosome(chrom.length, chrom.name, 0, 0, chrom.seq)
+            for feature in chrom.features:
+                # Length / position / strand / name / type / qualifierDict
+                newChrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]),
+                            feature.position[2], feature.id, feature.type, feature.qualifiers)
 
     def loadStyleFile(self):
         styleHandle = QFileDialog.getOpenFileName(self, 'Select Style File', './', 'Text Files (*.txt) ;; All Files (*.*)')
