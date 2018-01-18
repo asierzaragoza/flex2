@@ -159,10 +159,14 @@ def parseGbFiles(filenames, exceptionDict = None):
         newFosmid = Fosmid(name=gbRecord.id, length=len(gbRecord.seq), seq=gbRecord.seq)
         featureList = gbRecord.features
         for rawFeature in featureList:
+
             newFeature = Feature(newFosmid, rawFeature)
-            newFeature.getFeatureSequence(
-                str(gbRecord.seq[rawFeature.location.start.position:rawFeature.location.end.position]))
-            newFosmid.addFeature(newFeature)
+            if (newFeature.position[1] - newFeature.position[0]) == newFosmid.length:
+                continue
+            else:
+                newFeature.getFeatureSequence(
+                    str(gbRecord.seq[rawFeature.location.start.position:rawFeature.location.end.position]))
+                newFosmid.addFeature(newFeature)
 
         newFosmid.purgeGeneList()
         newFosmid.removeSourceFeature()

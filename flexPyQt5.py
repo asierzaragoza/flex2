@@ -1,7 +1,7 @@
 import sys, os, random, traceback, subprocess
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
-    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget
+    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget, QInputDialog
 
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
@@ -155,6 +155,7 @@ def loadFlexFile(filename, genomeScene):
                         qualDict[item[0]] = item[1]
 
             except Exception as e:
+                pass
             newChrom.createGene(length, position, strand, name, type, qualDict)
 
     #Get all blast families from XML file
@@ -220,8 +221,9 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
         if filterBlastParameters['minAln'][1] == 'auto':
             family.removeSmallHits()
         family.removeOwnHits()
-        if filterBlastParameters['removeAdj'][1] == True:
-            family.mergeBlastList(filterBlastParameters['removeAdj'][0], 1.50)
+        if filterBlastParameters['removeAdj'][0] == True:
+            print('merging!')
+            family.mergeBlastList(filterBlastParameters['removeAdj'][1], 1.50)
         newFamily = genomeScene.createBlastFamily(family.parents)
         for BlastHit in family:
             newFamily.createPoly(BlastHit)
@@ -787,57 +789,11 @@ class BlastFamilyWidget(QWidget):
 
         # Set blastFamilyTable
         self.blastTable = QTableWidget()
-        self.blastTable.setRowCount(len(self.blastList))
-        self.blastTable.setColumnCount(4)
-        self.blastTable.setHorizontalHeaderLabels(['Sequence 1', 'Sequence 2', 'Nº of Blasts', 'Visible?'])
-        self.blastTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.blastTable.setSelectionBehavior(QTableView.SelectRows)
-
-        for i in range(0, len(self.blastList)):
-
-            parent1Cell = QTableWidgetItem(self.blastList[i].parents[0])
-            parent2Cell = QTableWidgetItem(self.blastList[i].parents[1])
-            nOfBlastsCell = QTableWidgetItem(str(len(self.blastList[i].blastPolyList)))
-            visibleCell = QCheckBox(self.blastTable)
-            visibleCell.clicked.connect(self.hideBlast)
-            visibleCell.setTristate(False)
-            self.blastTable.setCellWidget(i, 3, visibleCell)
-
-            if self.blastList[i].blastPolyList[0].isVisible() == True:
-                visibleCell.setCheckState(QtCore.Qt.Checked)
-            else:
-                visibleCell.setCheckState(QtCore.Qt.Unchecked)
-
-            self.blastTable.setItem(i, 0, parent1Cell)
-            self.blastTable.setItem(i, 1, parent2Cell)
-            self.blastTable.setItem(i, 2, nOfBlastsCell)
+        self.generateBlastTable(self.blastTable)
 
         #Set Chromtable
         self.chromTable = QTableWidget()
-        self.chromTable.setRowCount(len(self.chromList))
-        self.chromTable.setColumnCount(4)
-        self.chromTable.setHorizontalHeaderLabels(['Sequence Name', 'Sequence Length', '', 'Visible?'])
-        self.chromTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.chromTable.setSelectionBehavior(QTableView.SelectRows)
-
-        for i in range(0, len(self.chromList)):
-            nameCell = QTableWidgetItem(self.chromList[i].name)
-            lengthCell = QTableWidgetItem(str(len(self.chromList[i].sequence)))
-            changeNameCell = QPushButton('Change Name', self.chromTable)
-            self.chromTable.setCellWidget(i, 2, changeNameCell)
-            visibleCell = QCheckBox(self.chromTable)
-            visibleCell.setTristate(False)
-            self.chromTable.setCellWidget(i, 3, visibleCell)
-
-
-            if self.chromList[i].isVisible() == True:
-                visibleCell.setCheckState(QtCore.Qt.Checked)
-            else:
-                visibleCell.setCheckState(QtCore.Qt.Unchecked)
-
-            self.chromTable.setItem(i, 0, nameCell)
-            self.chromTable.setItem(i, 1, lengthCell)
-
+        self.generateChromTable(self.chromTable)
 
         self.tabs = QTabWidget()
         self.tab1 = QWidget()
@@ -863,6 +819,60 @@ class BlastFamilyWidget(QWidget):
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
+    def generateBlastTable(self, qtable):
+        qtable.setRowCount(len(self.blastList))
+        qtable.setColumnCount(4)
+        qtable.setHorizontalHeaderLabels(['Sequence 1', 'Sequence 2', 'Nº of Blasts', 'Visible?'])
+        qtable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        qtable.setSelectionBehavior(QTableView.SelectRows)
+
+        for i in range(0, len(self.blastList)):
+
+            parent1Cell = QTableWidgetItem(self.blastList[i].parents[0])
+            parent2Cell = QTableWidgetItem(self.blastList[i].parents[1])
+            nOfBlastsCell = QTableWidgetItem(str(len(self.blastList[i].blastPolyList)))
+            visibleCell = QCheckBox(self.blastTable)
+            visibleCell.clicked.connect(self.hideBlast)
+            visibleCell.setTristate(False)
+            self.blastTable.setCellWidget(i, 3, visibleCell)
+            # The try/Except block is here so the program doesn't crash if it sees a blastFamily with 0 blasts
+            try:
+                if self.blastList[i].blastPolyList[0].isVisible() == True:
+                    visibleCell.setCheckState(QtCore.Qt.Checked)
+                else:
+                    visibleCell.setCheckState(QtCore.Qt.Unchecked)
+            except IndexError:
+                visibleCell.setCheckState(QtCore.Qt.Unchecked)
+
+            qtable.setItem(i, 0, parent1Cell)
+            qtable.setItem(i, 1, parent2Cell)
+            qtable.setItem(i, 2, nOfBlastsCell)
+
+    def generateChromTable(self, qtable):
+        qtable.setRowCount(len(self.chromList))
+        qtable.setColumnCount(4)
+        qtable.setHorizontalHeaderLabels(['Sequence Name', 'Sequence Length', '', 'Visible?'])
+        qtable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        qtable.setSelectionBehavior(QTableView.SelectRows)
+
+        for i in range(0, len(self.chromList)):
+            nameCell = QTableWidgetItem(self.chromList[i].name)
+            lengthCell = QTableWidgetItem(str(len(self.chromList[i].sequence)))
+            changeNameCell = QPushButton('Change Name', self.chromTable)
+            changeNameCell.clicked.connect(self.changeName)
+            qtable.setCellWidget(i, 2, changeNameCell)
+            visibleCell = QCheckBox(self.chromTable)
+            visibleCell.setTristate(False)
+            qtable.setCellWidget(i, 3, visibleCell)
+
+            if self.chromList[i].isVisible() == True:
+                visibleCell.setCheckState(QtCore.Qt.Checked)
+            else:
+                visibleCell.setCheckState(QtCore.Qt.Unchecked)
+
+            qtable.setItem(i, 0, nameCell)
+            qtable.setItem(i, 1, lengthCell)
+
     def hideBlast(self):
         ch = self.sender()
         ix = self.blastTable.indexAt(ch.pos())
@@ -871,6 +881,16 @@ class BlastFamilyWidget(QWidget):
             self.blastList[row].setBlastVisibility(True)
         else:
             self.blastList[row].setBlastVisibility(False)
+
+    def changeName(self):
+        newName, okPressed = QInputDialog.getText(self, 'Input new name', 'Input new name')
+        if okPressed and newName != '':
+            ch = self.sender()
+            ix = self.chromTable.indexAt(ch.pos())
+            row = ix.row()
+            self.chromList[row].name = newName
+        self.generateChromTable(self.chromTable)
+
 
 
 class BlastInfoWidget(QWidget):
@@ -881,7 +901,7 @@ class BlastInfoWidget(QWidget):
         self.setGeometry(0, 0, 600, 350)
         self.chrList = chrList
         self.initUI()
-        self.blastSettings = {'blastType': 'blastn', 'blastMatrix': 'BLOSUM62', 'minIdent': '90.0', 'minAln': 'auto',
+        self.blastSettings = {'blastType': 'blastn', 'blastMatrix': 'BLOSUM62', 'minIdent': '90.0', 'minAln': '1000',
                               'mergeAdj': [False, 0], 'saveFile': False}
 
     def initUI(self):
@@ -958,7 +978,7 @@ class GBInfoWidget(QWidget):
         super().__init__()
         self.setGeometry(0, 0, 600, 350)
         self.gbList = gbList
-        self.blastSettings = {'blastType': 'blastn', 'blastMatrix': 'BLOSUM62', 'minIdent': '90.0', 'minAln': 'auto',
+        self.blastSettings = {'blastType': 'blastn', 'blastMatrix': 'BLOSUM62', 'minIdent': '90.0', 'minAln': '1000',
                               'mergeAdj': [False, 0], 'saveFile': False}
         self.initUI()
 
@@ -1039,7 +1059,7 @@ class BlastSettingsWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setGeometry(0, 0, 600, 200)
-        self.blastSettings = {'blastType':'blastn', 'blastMatrix':'BLOSUM62', 'minIdent':'90.0', 'minAln':'auto',
+        self.blastSettings = {'blastType':'blastn', 'blastMatrix':'BLOSUM62', 'minIdent':'90.0', 'minAln':'1000',
                              'mergeAdj':[False, 0], 'saveFile':False}
         self.initUI()
 
