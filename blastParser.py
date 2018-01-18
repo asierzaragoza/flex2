@@ -1,8 +1,7 @@
 #Initialize variables
 
 nOfHits = 0
-minAln = 0
-minIdentity = 90
+
 
 class BlastFamily():
     def __init__(self, parentList):
@@ -56,9 +55,9 @@ class BlastFamily():
         elif sortBy == 'matchLen':
             self.blastList.sort(key = lambda BlastHit: BlastHit.matchLen)
 
-    def mergeBlastList(self):
+    def mergeBlastList(self, threshold, mult):
         #Initialize variables + Subthreshold (contains the merging parameters)
-        subThreshold = [1000, 1.50]
+        subThreshold = [threshold, mult]
         finalBlastList = []
         nonMergedList = []
         #Equalize so seq1 and seq2 are the same sequence for all blasts
@@ -298,7 +297,7 @@ class BlastHit():
         self._status = None
 
 #Basic filtering: self hits, min length, min identity
-def parseBlastFile(blastFile):
+def parseBlastFile(blastFile, minIdentity = 90, minAln = 0 ):
     with open(blastFile, 'r') as blastResults:
         causeDict = {'Self Hits':0, 'Low identity':0, 'Small Match':0}
         nOfHits = 0

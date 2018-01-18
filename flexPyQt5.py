@@ -1,7 +1,7 @@
-import sys, random, traceback, subprocess
+import sys, os, random, traceback, subprocess
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
-    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView
+    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget
 
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
@@ -40,7 +40,6 @@ def parseOldGenomeFile(filename, genomeScene):
                 chr.sequence = str(cdsLine[8])
 
             else:
-                print('line not processed')
                 pass
 
 
@@ -135,7 +134,6 @@ def loadFlexFile(filename, genomeScene):
 
 
     #Get all chromosomes from XML file
-    print(len(root.findall('Chromosome')))
     for chrom in root.findall('Chromosome'):
         name = chrom.get('name')
         length = int(float(chrom.get('length')))
@@ -157,7 +155,6 @@ def loadFlexFile(filename, genomeScene):
                         qualDict[item[0]] = item[1]
 
             except Exception as e:
-                print(e)
             newChrom.createGene(length, position, strand, name, type, qualDict)
 
     #Get all blast families from XML file
@@ -175,10 +172,76 @@ def loadFlexFile(filename, genomeScene):
             identity = float(blastPoly.get('identity'))
             newFamily.createPoly2(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity)
 
-    print('Done!')
 
-def runBlastOnSeqs(filename, blastPath, blastSettings):
-    pass
+
+def getFastaFile(chromList):
+    if os.path.exists('blastSeqs_flex.temp.fasta'):
+        os.remove('blastSeqs_flex.temp.fasta')
+    with open('blastSeqs_flex.temp.fasta', 'w') as blastFile:
+        for chrom in chromList:
+            blastFile.write('>' + chrom.name + '\n')
+            blastFile.write(str(chrom.sequence) + '\n')
+
+
+
+def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
+    #Create blast db
+    subprocess.call([blastPath + '\makeblastdb.exe', '-in', 'blastSeqs_flex.temp.fasta', '-out', 'dbTemp', '-dbtype', 'nucl'])
+    #Run blast
+    if blastSettings['blastType'] == 'blastn':
+        subprocess.call([blastPath + r'\blastn.exe', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out' , 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+    else:
+        subprocess.call([blastPath + r'\blastn.exe', '-matrix', str(blastSettings['blastMatrix']), '-query',  'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+
+    filterBlastParameters = {'minAln':[0, 'auto'], 'minIdent':90, 'removeAdj':[0,None]}
+    try:
+        if blastSettings['minAln'] == 'auto':
+            pass
+        else:
+            filterBlastParameters['minAln'][0] = int(blastSettings['minAln'])
+            filterBlastParameters['minAln'][1] = None
+    except Exception:
+        pass
+    try:
+        filterBlastParameters['minIdent'] = float(blastSettings['minIdent'])
+    except Exception:
+        pass
+    try:
+        filterBlastParameters['removeAdj'][0] = bool(blastSettings['removeAdj'][0])
+        filterBlastParameters['removeAdj'][1] = int(blastSettings['removeAdj'][1])
+    except Exception:
+        pass
+
+    newBlastHits = blastParser.parseBlastFile('blastSeqs_flex.blast', minIdentity=filterBlastParameters['minIdent'],
+                                              minAln=filterBlastParameters['minAln'][0])
+    families = blastParser.groupHits(newBlastHits)
+    for family in families:
+        #family._equalize()
+        if filterBlastParameters['minAln'][1] == 'auto':
+            family.removeSmallHits()
+        family.removeOwnHits()
+        if filterBlastParameters['removeAdj'][1] == True:
+            family.mergeBlastList(filterBlastParameters['removeAdj'][0], 1.50)
+        newFamily = genomeScene.createBlastFamily(family.parents)
+        for BlastHit in family:
+            newFamily.createPoly(BlastHit)
+
+
+
+
+
+
+    if blastSettings['saveFile'] == True:
+        try:
+            os.remove('blastSequences_flex2_original.blast')
+        except Exception:
+            pass
+        os.rename('blastSeqs_flex.blast', 'blastSequences_flex2_original.blast')
+    else:
+        os.remove('blastSeqs_flex.blast')
+
+
+
 
 def parseStyleFile(filename):
     paintOrderList = []
@@ -239,13 +302,11 @@ class GenomeScene(QGraphicsScene):
             if chr.name == target:
                 return chr
 
-        print('chr not found')
         return None
 
     def applyStyle(self, filename):
         paintOrderList = parseStyleFile(filename)
         for chr in self.chrList:
-            print(len(chr.geneList))
             for cds in chr.geneList:
                 cds.applyStyle(paintOrderList)
         self.update()
@@ -559,27 +620,20 @@ class CDS(QGraphicsPolygonItem):
             newColor = newColor.fromHsv(int(hue), int(saturation) * 2.55, int(value) * 2.55, 255)
 
         except Exception as e:
-            print('could not process color!')
             self.style.setColor(oldColor)
-            print(e)
             pass
 
         if newColor.getHsv()[0] < 0:
             self.style.setColor(oldColor)
-            print(oldColor.getHsv(), 'new color is None')
         else:
-            print(newColor.getHsv(), 'this is the new color')
             self.style.setColor(newColor)
         self.setBrush(self.style)
 
     def applyStyle(self, paintOrderList):
-        print(len(paintOrderList))
         newColor = [None, None, None]
 
         for order in paintOrderList:
-            print('trying type')
             if self.type != order['type']:
-                print('invalid type', order['type'], self.type)
                 continue
             #Classify by length
             if order['class'] == None:
@@ -587,13 +641,10 @@ class CDS(QGraphicsPolygonItem):
                 self.modifyBrush(newColor[0], newColor[1], newColor[2])
                 continue
             elif order['class'] == 'length':
-                print('trying length')
                 if order['class2'] == '>':
                     if self.w > int(order['delimiter']):
-                        print('painted! - length')
                         newColor = [order['color'][0], order['color'][1], order['color'][2]]
                     else:
-                        print('Not valid!', self.w, '<', int(order['delimiter']))
                         continue
                 elif order['class2'] == '<':
                     if self.w < int(order['delimiter']):
@@ -602,18 +653,14 @@ class CDS(QGraphicsPolygonItem):
                         continue
 
             elif order['class'] == 'qualifier':
-                print('trying qualifiers')
                 try:
                     cdsValue = self.qualifiers[order['class2']]
 
                     if str(order['delimiter'].rstrip()) in str(cdsValue):
-                        print('painted! - qualifier', order['color'][0], order['color'][1], order['color'][2])
                         newColor = [order['color'][0], order['color'][1], order['color'][2]]
                     else:
-                        print('qualifier does not match', order['delimiter'], ',', len(order['delimiter']), cdsValue , len(cdsValue))
                         continue
                 except Exception:
-                    print('no qualifier', order['class2'])
                     continue
             self.modifyBrush(newColor[0], newColor[1], newColor[2])
 
@@ -714,12 +761,10 @@ class BlastPolygon(QGraphicsPolygonItem):
         identityValue = float(self.identity) / 100
         newSat = oldColor.saturation()
         newVal = oldColor.value()
-        print(newSat, newVal, identityValue)
         if newSat > 0:
             newSat = int(oldColor.saturation() * identityValue)
         if newVal < 255:
             newVal = int(oldColor.value() * (1/identityValue))
-        print(newSat, newVal)
         newColor = QtGui.QColor().fromHsv(oldColor.hue(), newSat, newVal, 255)
         newBrush = QtGui.QBrush(newColor)
         self.brush = newBrush
@@ -727,10 +772,11 @@ class BlastPolygon(QGraphicsPolygonItem):
 
 
 class BlastFamilyWidget(QWidget):
-    def __init__(self, blastList):
+    def __init__(self, blastList, chromList):
         super().__init__()
         self.blastList = blastList
-        self.setWindowModality(QtCore.Qt.ApplicationModal)
+        self.chromList = chromList
+        #self.setWindowModality(QtCore.Qt.ApplicationModal)
 
         self.initUI()
 
@@ -739,23 +785,25 @@ class BlastFamilyWidget(QWidget):
         self.setGeometry(0, 0, 350, 400)
         self.setWindowTitle('Manage Blasts')
 
+        # Set blastFamilyTable
         self.blastTable = QTableWidget()
         self.blastTable.setRowCount(len(self.blastList))
         self.blastTable.setColumnCount(4)
         self.blastTable.setHorizontalHeaderLabels(['Sequence 1', 'Sequence 2', 'Nº of Blasts', 'Visible?'])
         self.blastTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.blastTable.setSelectionBehavior(QTableView.SelectRows)
+
         for i in range(0, len(self.blastList)):
 
             parent1Cell = QTableWidgetItem(self.blastList[i].parents[0])
             parent2Cell = QTableWidgetItem(self.blastList[i].parents[1])
             nOfBlastsCell = QTableWidgetItem(str(len(self.blastList[i].blastPolyList)))
             visibleCell = QCheckBox(self.blastTable)
+            visibleCell.clicked.connect(self.hideBlast)
             visibleCell.setTristate(False)
             self.blastTable.setCellWidget(i, 3, visibleCell)
 
-
-            if self.blastList[0].blastPolyList[0].isVisible() == True:
+            if self.blastList[i].blastPolyList[0].isVisible() == True:
                 visibleCell.setCheckState(QtCore.Qt.Checked)
             else:
                 visibleCell.setCheckState(QtCore.Qt.Unchecked)
@@ -764,11 +812,48 @@ class BlastFamilyWidget(QWidget):
             self.blastTable.setItem(i, 1, parent2Cell)
             self.blastTable.setItem(i, 2, nOfBlastsCell)
 
+        #Set Chromtable
+        self.chromTable = QTableWidget()
+        self.chromTable.setRowCount(len(self.chromList))
+        self.chromTable.setColumnCount(4)
+        self.chromTable.setHorizontalHeaderLabels(['Sequence Name', 'Sequence Length', '', 'Visible?'])
+        self.chromTable.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.chromTable.setSelectionBehavior(QTableView.SelectRows)
+
+        for i in range(0, len(self.chromList)):
+            nameCell = QTableWidgetItem(self.chromList[i].name)
+            lengthCell = QTableWidgetItem(str(len(self.chromList[i].sequence)))
+            changeNameCell = QPushButton('Change Name', self.chromTable)
+            self.chromTable.setCellWidget(i, 2, changeNameCell)
+            visibleCell = QCheckBox(self.chromTable)
+            visibleCell.setTristate(False)
+            self.chromTable.setCellWidget(i, 3, visibleCell)
 
 
-        layVBox = QVBoxLayout()
-        layVBox.addWidget(self.blastTable)
-        self.setLayout(layVBox)
+            if self.chromList[i].isVisible() == True:
+                visibleCell.setCheckState(QtCore.Qt.Checked)
+            else:
+                visibleCell.setCheckState(QtCore.Qt.Unchecked)
+
+            self.chromTable.setItem(i, 0, nameCell)
+            self.chromTable.setItem(i, 1, lengthCell)
+
+
+        self.tabs = QTabWidget()
+        self.tab1 = QWidget()
+        self.tab2 = QWidget()
+        self.tabs.addTab(self.tab1, "Sequences")
+        self.tabs.addTab(self.tab2, "Blast Families")
+
+        mainLayout = QVBoxLayout()
+        layVBoxTab1 = QVBoxLayout()
+        layVBoxTab2 = QVBoxLayout()
+        layVBoxTab1.addWidget(self.chromTable)
+        layVBoxTab2.addWidget(self.blastTable)
+        self.tab1.setLayout(layVBoxTab1)
+        self.tab2.setLayout(layVBoxTab2)
+        mainLayout.addWidget(self.tabs)
+        self.setLayout(mainLayout)
         self.center()
         self.show()
 
@@ -778,14 +863,26 @@ class BlastFamilyWidget(QWidget):
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
+    def hideBlast(self):
+        ch = self.sender()
+        ix = self.blastTable.indexAt(ch.pos())
+        row = ix.row()
+        if ch.checkState() == QtCore.Qt.Checked:
+            self.blastList[row].setBlastVisibility(True)
+        else:
+            self.blastList[row].setBlastVisibility(False)
+
 
 class BlastInfoWidget(QWidget):
+    blastInfoTrigger = QtCore.pyqtSignal(list)
 
     def __init__(self, chrList):
         super().__init__()
         self.setGeometry(0, 0, 600, 350)
         self.chrList = chrList
         self.initUI()
+        self.blastSettings = {'blastType': 'blastn', 'blastMatrix': 'BLOSUM62', 'minIdent': '90.0', 'minAln': 'auto',
+                              'mergeAdj': [False, 0], 'saveFile': False}
 
     def initUI(self):
         self.setWindowTitle('Perform Blast Comparison')
@@ -803,18 +900,19 @@ class BlastInfoWidget(QWidget):
 
         for i in range(0, len(self.chrList)):
             idCell = QTableWidgetItem(self.chrList[i].name)
-            lengthCell = QTableWidgetItem(len(self.chrList[i].seq))
+            lengthCell = QTableWidgetItem(str(len(self.chrList[i].sequence)))
             parseCell = QCheckBox(self.chrTable)
             parseCell.setTristate(False)
             parseCell.setCheckState(QtCore.Qt.Checked)
-            self.gbTable.setItem(i, 0, idCell)
-            self.gbTable.setItem(i, 1, lengthCell)
-            self.gbTable.setCellWidget(i, 2, parseCell)
+            self.chrTable.setItem(i, 0, idCell)
+            self.chrTable.setItem(i, 1, lengthCell)
+            self.chrTable.setCellWidget(i, 2, parseCell)
 
         self.settingsButton = QPushButton('Blast Options...')
         self.blastButton = QPushButton('Start Blast')
 
         self.settingsButton.clicked.connect(self.getBlastSettings)
+        self.blastButton.clicked.connect(self.performBlast)
 
         layHBox = QHBoxLayout()
         layHBox.addWidget(self.settingsButton)
@@ -829,7 +927,27 @@ class BlastInfoWidget(QWidget):
         self.center()
 
     def getBlastSettings(self):
-        pass
+        self.window = BlastSettingsWidget()
+        self.window.show()
+        self.window.blastSettingsTrigger.connect(self.storeBlastSettings)
+
+    def storeBlastSettings(self, dict):
+        self.blastSettings = dict
+
+    def performBlast(self):
+        finalTable = []
+        for i in range(0, self.chrTable.rowCount()):
+            if self.chrTable.cellWidget(i, 2).isChecked() == True:
+                item = self.chrTable.item(i, 0).text()
+                finalTable.append(item)
+        self.blastInfoTrigger.emit([finalTable, self.blastSettings])
+        self.close()
+
+    def center(self):
+        qr = self.frameGeometry()
+        cp = QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
 
 
 class GBInfoWidget(QWidget):
@@ -891,7 +1009,6 @@ class GBInfoWidget(QWidget):
 
     def clickingParse(self):
         self.getSelectedSeqs()
-        print(self.blastSettings)
 
     def center(self):
         qr = self.frameGeometry()
@@ -906,13 +1023,11 @@ class GBInfoWidget(QWidget):
 
     def storeBlastSettings(self, dict):
         self.blastSettings = dict
-        print(dict)
 
     def getSelectedSeqs(self):
         finalTable = []
         for i in range(0, self.gbTable.rowCount()):
             if self.gbTable.cellWidget(i, 2).isChecked() == True:
-                print(i, 'Honk!')
                 items = [self.gbTable.item(i,0).text(), self.gbTable.item(i,1).text()]
                 finalTable.append(items)
         self.gbInfoTrigger.emit([finalTable, self.blastSettings])
@@ -1013,7 +1128,6 @@ class BlastSettingsWidget(QWidget):
             self.linEditMergeBlasts.setText('')
 
     def saveSettings(self):
-        print(self.blastSettings)
         if self.buttonTblastx.isChecked() == True:
             self.blastSettings['blastType'] = 'tblastx'
             self.blastSettings['blastMatrix'] = self.comboMatrix.currentText()
@@ -1073,12 +1187,8 @@ class MainWidget(QWidget):
 
         self.scene = GenomeScene()
         self.view = GenomeViewer(self.scene)
-        #parseGbFile('./V97-phage.genbank', self.scene)
-        #parseOldGenomeFile('M1627-M1630.plot', self.scene)
-        #parseBlastFile('M1627-M1630.plot.blastn.clean', self.scene)
-        #self.scene.applyStyle('./style.txt')
-        #loadFlexFile('test.flex', self.scene)
-        #saveFlexFile(self.scene)
+
+        self.blastPath = r'C:\Program Files\NCBI\blast-2.7.1+\bin'
 
 
 
@@ -1152,9 +1262,9 @@ class MainWidget(QWidget):
         self.move(qr.topLeft())
 
     def manageFamilies(self):
-        self.window = BlastFamilyWidget(self.scene.blastFamilies)
+        self.window = BlastFamilyWidget(self.scene.blastFamilies, self.scene.chrList)
         self.window.show()
-        self.signal1 = self.window
+        #self.signal1 = self.window
 
     def showBlastDialog(self):
         blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', './', 'Blast Files (*.blastn *.plot.blastn.clean' +
@@ -1177,7 +1287,6 @@ class MainWidget(QWidget):
                 #self.view = newView
                 self.view.update()
             except Exception as e:
-                print(e)
                 traceback.print_exc()
                 self.view.setScene(self.scene)
 
@@ -1187,6 +1296,7 @@ class MainWidget(QWidget):
 
     def getBlasts(self):
         self.window = BlastInfoWidget(self.scene.chrList)
+        self.window.blastInfoTrigger.connect(self.processBlastOrders)
         self.window.show()
 
     def saveScreenshotDialog(self):
@@ -1243,13 +1353,21 @@ class MainWidget(QWidget):
             else:
                 seqDict[seq[0]].append(seq[1])
         chromList = gbParser.parseGbFiles(seqDict.keys(), seqDict)
-        print(len(chromList), 'sequences')
         for chrom in chromList:
             newChrom = self.scene.createChromosome(chrom.length, chrom.name, 0, 0, chrom.seq)
             for feature in chrom.features:
                 # Length / position / strand / name / type / qualifierDict
                 newChrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]),
                             feature.position[2], feature.id, feature.type, feature.qualifiers)
+
+    def processBlastOrders(self, list):
+        blastSettings = list[1]
+        seqList = list[0]
+        chrList = []
+        for seqName in seqList:
+            chrList.append(self.scene.findChromosomeByName(seqName))
+        getFastaFile(chrList)
+        runBlastOnSeqs(self.blastPath ,blastSettings, self.scene)
 
     def loadStyleFile(self):
         styleHandle = QFileDialog.getOpenFileName(self, 'Select Style File', './', 'Text Files (*.txt) ;; All Files (*.*)')
