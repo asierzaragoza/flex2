@@ -324,10 +324,15 @@ class GenomeScene(QGraphicsScene):
         self.findChromosomeByName(name).deleteChromosome()
 
     def hideChromosome(self, name, bool):
-        for blastFamily in self.blastFamilies:
-            if name in blastFamily.parents:
-                blastFamily.setBlastVisibility(bool)
         self.findChromosomeByName(name).hideChromosome(bool)
+        for blastFamily in self.blastFamilies:
+
+            if name in self.blastFamily.parents and self.findChromosomeByName(blastFamily.parents[0]).isVisible() and self.findChromosomeByName(blastFamily.parents[1]).isVisible():
+                blastFamily.setBlastVisibility(bool)
+            else:
+                pass
+
+
 
 
 
@@ -453,7 +458,6 @@ class Chromosome(QGraphicsRectItem):
 
             for cds in self.geneList:
                 cds.moveCDS(xdiff, ydiff)
-
 
     def createGene(self, w, pos, strand, name, type, qualifiers):
         cds = CDS(self, w, pos, strand, name, type, qualifiers)
