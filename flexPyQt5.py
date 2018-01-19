@@ -1,4 +1,4 @@
-import sys, os, random, traceback, subprocess
+import sys, os, random, traceback, subprocess, platform
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
     QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget, QInputDialog
@@ -174,7 +174,6 @@ def loadFlexFile(filename, genomeScene):
             newFamily.createPoly2(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity)
 
 
-
 def getFastaFile(chromList):
     if os.path.exists('blastSeqs_flex.temp.fasta'):
         os.remove('blastSeqs_flex.temp.fasta')
@@ -184,15 +183,27 @@ def getFastaFile(chromList):
             blastFile.write(str(chrom.sequence) + '\n')
 
 
-
 def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     #Create blast db
     subprocess.call([blastPath + 'makeblastdb', '-in', 'blastSeqs_flex.temp.fasta', '-out', 'dbTemp', '-dbtype', 'nucl'])
     #Run blast
-    if blastSettings['blastType'] == 'blastn':
-        subprocess.call([blastPath + 'blastn', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out' , 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+    if platform.system() == 'Windows':
+        if blastSettings['blastType'] == 'blastn':
+            subprocess.call([blastPath + 'blastn.exe', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp',
+                             '-out' , 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+        else:
+            subprocess.call([blastPath + 'tblastx.exe', '-matrix', str(blastSettings['blastMatrix']), '-query',
+                             'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast',
+                             '-num_threads', '4', '-outfmt', '6'])
+
     else:
-        subprocess.call([blastPath + 'tblastx', '-matrix', str(blastSettings['blastMatrix']), '-query',  'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+        if blastSettings['blastType'] == 'blastn':
+            subprocess.call([blastPath + 'blastn', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out',
+                             'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+        else:
+            subprocess.call([blastPath + 'tblastx', '-matrix', str(blastSettings['blastMatrix']), '-query',
+                             'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast',
+                             '-num_threads', '4', '-outfmt', '6'])
 
     filterBlastParameters = {'minAln':[0, 'auto'], 'minIdent':90, 'removeAdj':[0,None]}
     try:
@@ -208,9 +219,13 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     except Exception:
         pass
     try:
-        filterBlastParameters['removeAdj'][0] = bool(blastSettings['removeAdj'][0])
-        filterBlastParameters['removeAdj'][1] = int(blastSettings['removeAdj'][1])
+        print('checking adj')
+        filterBlastParameters['removeAdj'][0] = bool(blastSettings['mergeAdj'][0])
+        filterBlastParameters['removeAdj'][1] = int(blastSettings['mergeAdj'][1])
+        print(filterBlastParameters['removeAdj'])
     except Exception:
+        print('adj exception found')
+        print(blastSettings['removeAdj'])
         pass
 
     newBlastHits = blastParser.parseBlastFile('blastSeqs_flex.blast', minIdentity=filterBlastParameters['minIdent'],
@@ -222,6 +237,7 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
             family.removeSmallHits()
         family.removeOwnHits()
         if filterBlastParameters['removeAdj'][0] == True:
+            print('filtering!')
             family.mergeBlastList(filterBlastParameters['removeAdj'][1], 1.50)
 
         newFamily = genomeScene.createBlastFamily(family.parents)
@@ -241,8 +257,6 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
         os.rename('blastSeqs_flex.blast', 'blastSequences_flex2_original.blast')
     else:
         os.remove('blastSeqs_flex.blast')
-
-
 
 
 def parseStyleFile(filename):
@@ -331,9 +345,6 @@ class GenomeScene(QGraphicsScene):
                 blastFamily.setBlastVisibility(bool)
             else:
                 pass
-
-
-
 
 
 class GenomeViewer(QGraphicsView):
@@ -1077,22 +1088,25 @@ class GBInfoWidget(QWidget):
 
     def generateGbTable(self, qtable):
         qtable.setRowCount(len(self.gbList))
-        qtable.setColumnCount(3)
-        qtable.setHorizontalHeaderLabels(['File', 'SeqName', 'Parse?'])
+        qtable.setColumnCount(4)
+        qtable.setHorizontalHeaderLabels(['File', 'Name', 'Length', 'Parse?'])
 
         qtable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         qtable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         qtable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        qtable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
 
         for i in range(0, len(self.gbList)):
             fileCell = QTableWidgetItem(self.gbList[i][0])
             idCell = QTableWidgetItem(self.gbList[i][1])
+            lengthCell = QTableWidgetItem(str(self.gbList[i][2]))
             parseCell = QCheckBox(self.gbTable)
             parseCell.setTristate(False)
             parseCell.setCheckState(QtCore.Qt.Checked)
             qtable.setItem(i, 0, fileCell)
             qtable.setItem(i, 1, idCell)
-            qtable.setCellWidget(i, 2, parseCell)
+            qtable.setItem(i, 2, lengthCell)
+            qtable.setCellWidget(i, 3, parseCell)
 
     def clickingParse(self):
         self.getSelectedSeqs()
@@ -1120,7 +1134,7 @@ class GBInfoWidget(QWidget):
     def getSelectedSeqs(self):
         finalTable = []
         for i in range(0, self.gbTable.rowCount()):
-            if self.gbTable.cellWidget(i, 2).isChecked() == True:
+            if self.gbTable.cellWidget(i, 3).isChecked() == True:
                 items = [self.gbTable.item(i,0).text(), self.gbTable.item(i,1).text()]
                 finalTable.append(items)
         self.gbInfoTrigger.emit(finalTable)

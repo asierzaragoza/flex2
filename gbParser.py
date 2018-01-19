@@ -140,7 +140,7 @@ def getGbRecords(filenames):
         with open(file, 'r') as filehandle:
             inputFile = SeqIO.parse(filehandle, 'genbank')
             for record in inputFile:
-                gbFiles.append((file,record.id))
+                gbFiles.append((file,record.id, len(record.seq)))
     return gbFiles
 
 

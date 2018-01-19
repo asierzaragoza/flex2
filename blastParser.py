@@ -101,6 +101,9 @@ class BlastFamily():
             pos2Dtce = (scdBlast.seq2pos[0] - fstBlast.seq2pos[1] + 0.1)
             dtceDiv = abs(pos1Dtce / pos2Dtce)
             # first, check if the blast hits overlap. If they do, add them to the merge candidate list
+            print('pos1Dtce', fstBlast.seq1pos[1], '-', scdBlast.seq1pos[0])
+            print('pos2Dtce', fstBlast.seq2pos[1], '-', scdBlast.seq2pos[0])
+            print('dtces:', pos1Dtce, pos2Dtce, 'dtceDiv:', dtceDiv)
             if pos1Dtce < 0 and pos2Dtce < 0 and (1 / 1.05) < dtceDiv < 1.05:
                 fstBlast._status = 'Merged'
                 scdBlast._status = 'Merged'
