@@ -1,8 +1,7 @@
 #Initialize variables
 
 nOfHits = 0
-minAln = 0
-minIdentity = 90
+
 
 class BlastFamily():
     def __init__(self, parentList):
@@ -56,9 +55,9 @@ class BlastFamily():
         elif sortBy == 'matchLen':
             self.blastList.sort(key = lambda BlastHit: BlastHit.matchLen)
 
-    def mergeBlastList(self):
+    def mergeBlastList(self, threshold, mult):
         #Initialize variables + Subthreshold (contains the merging parameters)
-        subThreshold = [1000, 1.50]
+        subThreshold = [threshold, mult]
         finalBlastList = []
         nonMergedList = []
         #Equalize so seq1 and seq2 are the same sequence for all blasts
@@ -182,6 +181,7 @@ class BlastFamily():
             binNo = round(((maxLen - minLen) / binSize), 0)
             print('binNo:', binNo)
         except ZeroDivisionError:
+            print('Zero Division Error!', (maxLen-minLen), '/', binSize)
             return None
         bins = []
 
@@ -207,13 +207,17 @@ class BlastFamily():
         # minValue = -1e-10
         minHit = self.blastList[0].matchLen
         maxHit = self.blastList[-1].matchLen
+
         if binSize is None:
             binSize = (maxHit - minHit) / 10
 
         for i in range(0, 10):
+            print(i)
+            print('minHit:', minHit, 'maxHit:', maxHit)
             bins = self._binHits(binSize, minHit, maxHit)
 
             if bins == None or len(bins) == 0:
+                print('No bins, returning maxHit')
                 return maxHit
 
             # Get n of hits
@@ -232,11 +236,17 @@ class BlastFamily():
                 nOfHits = len(currBin) + len(nextBin) + len(futBin)
                 slope = (len(nextBin) - len(currBin)) / binSize
                 futSlope = (len(futBin) - len(nextBin)) / binSize
+                if futSlope == 0:
+                    futSlope = 0.000001
+
+                print('currBin', len(currBin), 'nextBin', len(nextBin), 'futBin', len(futBin), 'binSize', binSize)
                 try:
-                    slopeDiv = (slope / futSlope)
+                    slopeDiv = abs(slope / futSlope)
+                    print('slope', slope,  'slopeDiv', slopeDiv, '%hits/totalhits', nOfHits / totalHits)
                 except ZeroDivisionError:
+                    print('zero division!')
                     slopeDiv = 0
-                if slope < 0 and slopeDiv >= 2 and nOfHits / totalHits > 0.25:
+                if slope < 0 and slopeDiv >= 1.5 and nOfHits / totalHits > 0.25:
                     maxHit = minHit + ((j + 1) * binSize)
 
                     if (binSize / 5) > ((maxHit - minHit) / 15):
@@ -283,7 +293,7 @@ class BlastHit():
             elif bitScoreSplit[1][0] == '-':
                 self.bitScore = float(bitScoreSplit[0]) * (10 ^ int(-bitScoreSplit[1][1:]))
             else:
-                print('Something went wrong!')
+                pass
         else:
             self.bitScore = float(blastLine[11])
 
@@ -298,7 +308,7 @@ class BlastHit():
         self._status = None
 
 #Basic filtering: self hits, min length, min identity
-def parseBlastFile(blastFile):
+def parseBlastFile(blastFile, minIdentity = 90, minAln = 1000):
     with open(blastFile, 'r') as blastResults:
         causeDict = {'Self Hits':0, 'Low identity':0, 'Small Match':0}
         nOfHits = 0
@@ -308,7 +318,7 @@ def parseBlastFile(blastFile):
                 continue
             else:
                 nOfHits += 1
-                print('procesing hit nº', nOfHits)
+
                 newHit = BlastHit(line)
                 # Remove self-hits
                 if newHit.parents[0] == newHit.parents[1]:
@@ -324,6 +334,7 @@ def parseBlastFile(blastFile):
                     continue
                 else:
                     acceptedHits.append(newHit)
+        print('STANDARD FILTERING:')
         print(causeDict['Self Hits'], 'self hits removed,', causeDict['Low identity'], 'low identity,', causeDict['Small Match'], 'small matches')
         print(len(acceptedHits), 'hits accepted')
         return acceptedHits
@@ -344,7 +355,6 @@ def groupHits(blastList):
                     blastFamilies[blastParents.index(parent)].addBlast(BlastHit)
                     break
             else:
-                print('parents', BlastHit.parents, 'not found in', blastParents)
                 newFamily = BlastFamily(BlastHit.parents)
                 newFamily.addBlast(BlastHit)
                 blastParents.append(BlastHit.parents)
@@ -356,17 +366,20 @@ def groupHits(blastList):
 #The following code only executes when its run as a script
 if __name__ == '__main__':
     inputName = 'M1627-M1630.plot.blastn.clean'
+    '''
+    'blastSequences_flex2_original.blast'
+    '''
 
 
     acceptedHits = parseBlastFile(inputName)
     blastFamilies = groupHits(acceptedHits)
-    with open('blastresults3o.blastn', 'w') as filehandle:
+    with open('blastresultsFlex.blastn', 'w') as filehandle:
         for family in blastFamilies:
             print('parents', family.parents, len(family.blastList))
-            family.removeSmallHits()
+            #family.removeSmallHits()
             family.removeOwnHits()
             print('len after removing duplicates', len(family.blastList))
-            family.mergeBlastList()
+            family.mergeBlastList(1000, 1.50)
 
             #family.diagnose()
 
