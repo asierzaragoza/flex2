@@ -1377,7 +1377,7 @@ class MainWidget(QWidget):
                     if line[0] == '#':
                         pass
                     elif line.split('=')[0] == 'blastPath':
-                        self.blastPath = line.split('=')[1]
+                        self.blastPath = line.split('=')[1].rstrip('\n')
         except Exception:
             pass
 
