@@ -181,9 +181,7 @@ def getFastaFile(chromList):
         for chrom in chromList:
             blastFile.write('>' + chrom.name + '\n')
             blastFile.write(str(chrom.sequence) + '\n')
-    with open('blastSeqs_flex.temp.fasta', 'r') as blastFile:
-        for line in blastFile:
-            print(len(line))
+
 
 
 def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
@@ -222,26 +220,21 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     except Exception:
         pass
     try:
-        print('checking adj')
         filterBlastParameters['removeAdj'][0] = bool(blastSettings['mergeAdj'][0])
         filterBlastParameters['removeAdj'][1] = int(blastSettings['mergeAdj'][1])
         print(filterBlastParameters['removeAdj'])
     except Exception:
-        print('adj exception found')
-        print(blastSettings['removeAdj'])
         pass
 
     newBlastHits = blastParser.parseBlastFile('blastSeqs_flex.blast', minIdentity=filterBlastParameters['minIdent'],
                                               minAln=filterBlastParameters['minAln'][0])
     families = blastParser.groupHits(newBlastHits)
     for family in families:
-        print('equalization')
         family._equalize()
         if filterBlastParameters['minAln'][1] == 'auto':
             family.removeSmallHits()
         family.removeOwnHits()
         if filterBlastParameters['removeAdj'][0] == True:
-            print('filtering!')
             family.mergeBlastList(filterBlastParameters['removeAdj'][1], 1.50)
 
         newFamily = genomeScene.createBlastFamily(family.parents)
@@ -1477,7 +1470,6 @@ class MainWidget(QWidget):
 
     def processGenbanks(self, queryList):
         seqList = queryList
-        print(seqList)
         #create dictionary
         seqDict = {}
         for seq in seqList:
@@ -1487,7 +1479,6 @@ class MainWidget(QWidget):
             else:
                 seqDict[seq[0]].append([seq[1], seq[2]])
         chromList = gbParser.parseGbFiles(seqDict.keys(), seqDict)
-        print(len(chromList))
         for chrom in chromList:
             newChrom = self.scene.createChromosome(chrom.length, chrom.name, 0, 0, chrom.seq)
             for feature in chrom.features:

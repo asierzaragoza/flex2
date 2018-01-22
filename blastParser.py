@@ -32,18 +32,13 @@ class BlastFamily():
     def _equalize(self):
         for BlastHit in self.blastList:
             if BlastHit.parents[0] != self.parents[0]:
-                print('Needs equalizing: FamilyParents:', self.parents, 'BlastParents:', BlastHit.parents)
-                if BlastHit.seq1pos[0] > BlastHit.seq1pos[1] or BlastHit.seq2pos[0] > BlastHit.seq2pos[1]:
-                    print('BlastHit is reversed')
                 print('Seq1Pos',BlastHit.seq1pos)
                 print('Seq2Pos', BlastHit.seq2pos)
                 newSeq2 = BlastHit.seq1pos
                 newSeq1 = BlastHit.seq2pos
-
                 BlastHit.parents = self.parents
                 BlastHit.seq1pos = newSeq1
                 BlastHit.seq2pos = newSeq2
-                print('\tFinished Equalizing:', BlastHit.parents[0], BlastHit.seq1pos, BlastHit.parents[1], BlastHit.seq2pos)
 
     def _separateByType(self):
         normalList = []
