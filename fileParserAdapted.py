@@ -182,7 +182,7 @@ if argParser.parse_args(sys.argv[1:]).blastn == True:
     #todo - add check for similarity (it's a percentage, so it should be between 0-100)
     for line in blastResults:
         nOfHits += 1
-        print('procesing hit nº', nOfHits)
+        print('procesing hit n', nOfHits)
         lineChunks = line.split('\t')
         #Remove self-hits
         if lineChunks[0] == lineChunks[1]:

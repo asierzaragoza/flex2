@@ -32,18 +32,24 @@ class BlastFamily():
     def _equalize(self):
         for BlastHit in self.blastList:
             if BlastHit.parents[0] != self.parents[0]:
-                seq2 = BlastHit.seq1pos
-                seq1 = BlastHit.seq2pos
+                print('Needs equalizing: FamilyParents:', self.parents, 'BlastParents:', BlastHit.parents)
+                if BlastHit.seq1pos[0] > BlastHit.seq1pos[1] or BlastHit.seq2pos[0] > BlastHit.seq2pos[1]:
+                    print('BlastHit is reversed')
+                print('Seq1Pos',BlastHit.seq1pos)
+                print('Seq2Pos', BlastHit.seq2pos)
+                newSeq2 = BlastHit.seq1pos
+                newSeq1 = BlastHit.seq2pos
 
                 BlastHit.parents = self.parents
-                BlastHit.seq1pos = seq2
-                BlastHit.seq2pos = seq1
+                BlastHit.seq1pos = newSeq1
+                BlastHit.seq2pos = newSeq2
+                print('\tFinished Equalizing:', BlastHit.parents[0], BlastHit.seq1pos, BlastHit.parents[1], BlastHit.seq2pos)
 
     def _separateByType(self):
         normalList = []
         reverseList = []
         for BlastHit in self.blastList:
-            if BlastHit.seq1pos[0] > BlastHit.seq1pos[1]:
+            if BlastHit.seq1pos[0] > BlastHit.seq1pos[1] or BlastHit.seq2pos[0] > BlastHit.seq2pos[1]:
                 reverseList.append(BlastHit)
             else:
                 normalList.append(BlastHit)
@@ -101,6 +107,9 @@ class BlastFamily():
             pos2Dtce = (scdBlast.seq2pos[0] - fstBlast.seq2pos[1] + 0.1)
             dtceDiv = abs(pos1Dtce / pos2Dtce)
             # first, check if the blast hits overlap. If they do, add them to the merge candidate list
+            print('pos1Dtce', fstBlast.seq1pos[1], '-', scdBlast.seq1pos[0])
+            print('pos2Dtce', fstBlast.seq2pos[1], '-', scdBlast.seq2pos[0])
+            print('dtces:', pos1Dtce, pos2Dtce, 'dtceDiv:', dtceDiv)
             if pos1Dtce < 0 and pos2Dtce < 0 and (1 / 1.05) < dtceDiv < 1.05:
                 fstBlast._status = 'Merged'
                 scdBlast._status = 'Merged'
@@ -308,7 +317,7 @@ class BlastHit():
         self._status = None
 
 #Basic filtering: self hits, min length, min identity
-def parseBlastFile(blastFile, minIdentity = 90, minAln = 0 ):
+def parseBlastFile(blastFile, minIdentity = 90, minAln = 1000):
     with open(blastFile, 'r') as blastResults:
         causeDict = {'Self Hits':0, 'Low identity':0, 'Small Match':0}
         nOfHits = 0
@@ -366,17 +375,20 @@ def groupHits(blastList):
 #The following code only executes when its run as a script
 if __name__ == '__main__':
     inputName = 'M1627-M1630.plot.blastn.clean'
+    '''
+    'blastSequences_flex2_original.blast'
+    '''
 
 
     acceptedHits = parseBlastFile(inputName)
     blastFamilies = groupHits(acceptedHits)
-    with open('blastresults3o.blastn', 'w') as filehandle:
+    with open('blastresultsFlex.blastn', 'w') as filehandle:
         for family in blastFamilies:
             print('parents', family.parents, len(family.blastList))
-            family.removeSmallHits()
+            #family.removeSmallHits()
             family.removeOwnHits()
             print('len after removing duplicates', len(family.blastList))
-            family.mergeBlastList()
+            family.mergeBlastList(1000, 1.50)
 
             #family.diagnose()
 

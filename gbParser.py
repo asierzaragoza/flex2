@@ -140,7 +140,7 @@ def getGbRecords(filenames):
         with open(file, 'r') as filehandle:
             inputFile = SeqIO.parse(filehandle, 'genbank')
             for record in inputFile:
-                gbFiles.append((file,record.id))
+                gbFiles.append((file,record.id, len(record.seq)))
     return gbFiles
 
 
@@ -150,8 +150,9 @@ def parseGbFiles(filenames, exceptionDict = None):
         with open(file, 'r') as filehandle:
             inputFile = SeqIO.parse(filehandle, 'genbank')
             for record in inputFile:
-                if record.id in exceptionDict[file]:
-                    gbRecordList.append(record)
+                for query in exceptionDict[file]:
+                    if record.id == query[0] and len(record.seq) == int(query[1]):
+                        gbRecordList.append(record)
                 else:
                     pass
     fosmidList = []

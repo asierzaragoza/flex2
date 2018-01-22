@@ -1,4 +1,4 @@
-import sys, os, random, traceback, subprocess
+import sys, os, random, traceback, subprocess, platform
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
     QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget, QInputDialog
@@ -57,7 +57,7 @@ def parseBlastFile(filename, genomeScene):
     newHits = blastParser.parseBlastFile(filename)
     families = blastParser.groupHits(newHits)
     for family in families:
-        family._equalize()
+        #family._equalize()
         newFamily = genomeScene.createBlastFamily(family.parents)
         for BlastHit in family:
             newFamily.createPoly(BlastHit)
@@ -174,7 +174,6 @@ def loadFlexFile(filename, genomeScene):
             newFamily.createPoly2(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity)
 
 
-
 def getFastaFile(chromList):
     if os.path.exists('blastSeqs_flex.temp.fasta'):
         os.remove('blastSeqs_flex.temp.fasta')
@@ -182,17 +181,32 @@ def getFastaFile(chromList):
         for chrom in chromList:
             blastFile.write('>' + chrom.name + '\n')
             blastFile.write(str(chrom.sequence) + '\n')
-
+    with open('blastSeqs_flex.temp.fasta', 'r') as blastFile:
+        for line in blastFile:
+            print(len(line))
 
 
 def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     #Create blast db
-    subprocess.call([blastPath + '\makeblastdb.exe', '-in', 'blastSeqs_flex.temp.fasta', '-out', 'dbTemp', '-dbtype', 'nucl'])
+    subprocess.call([blastPath + 'makeblastdb', '-in', 'blastSeqs_flex.temp.fasta', '-out', 'dbTemp', '-dbtype', 'nucl'])
     #Run blast
-    if blastSettings['blastType'] == 'blastn':
-        subprocess.call([blastPath + r'\blastn.exe', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out' , 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+    if platform.system() == 'Windows':
+        if blastSettings['blastType'] == 'blastn':
+            subprocess.call([blastPath + 'blastn.exe', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp',
+                             '-out' , 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+        else:
+            subprocess.call([blastPath + 'tblastx.exe', '-matrix', str(blastSettings['blastMatrix']), '-query',
+                             'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast',
+                             '-num_threads', '4', '-outfmt', '6'])
+
     else:
-        subprocess.call([blastPath + r'\blastn.exe', '-matrix', str(blastSettings['blastMatrix']), '-query',  'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+        if blastSettings['blastType'] == 'blastn':
+            subprocess.call([blastPath + 'blastn', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out',
+                             'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+        else:
+            subprocess.call([blastPath + 'tblastx', '-matrix', str(blastSettings['blastMatrix']), '-query',
+                             'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast',
+                             '-num_threads', '4', '-outfmt', '6'])
 
     filterBlastParameters = {'minAln':[0, 'auto'], 'minIdent':90, 'removeAdj':[0,None]}
     try:
@@ -208,30 +222,31 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     except Exception:
         pass
     try:
-        filterBlastParameters['removeAdj'][0] = bool(blastSettings['removeAdj'][0])
-        filterBlastParameters['removeAdj'][1] = int(blastSettings['removeAdj'][1])
+        print('checking adj')
+        filterBlastParameters['removeAdj'][0] = bool(blastSettings['mergeAdj'][0])
+        filterBlastParameters['removeAdj'][1] = int(blastSettings['mergeAdj'][1])
+        print(filterBlastParameters['removeAdj'])
     except Exception:
+        print('adj exception found')
+        print(blastSettings['removeAdj'])
         pass
 
     newBlastHits = blastParser.parseBlastFile('blastSeqs_flex.blast', minIdentity=filterBlastParameters['minIdent'],
                                               minAln=filterBlastParameters['minAln'][0])
     families = blastParser.groupHits(newBlastHits)
     for family in families:
+        print('equalization')
         family._equalize()
         if filterBlastParameters['minAln'][1] == 'auto':
             family.removeSmallHits()
         family.removeOwnHits()
         if filterBlastParameters['removeAdj'][0] == True:
+            print('filtering!')
             family.mergeBlastList(filterBlastParameters['removeAdj'][1], 1.50)
 
         newFamily = genomeScene.createBlastFamily(family.parents)
         for BlastHit in family:
             newFamily.createPoly(BlastHit)
-
-
-
-
-
 
     if blastSettings['saveFile'] == True:
         try:
@@ -241,8 +256,6 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
         os.rename('blastSeqs_flex.blast', 'blastSequences_flex2_original.blast')
     else:
         os.remove('blastSeqs_flex.blast')
-
-
 
 
 def parseStyleFile(filename):
@@ -324,11 +337,13 @@ class GenomeScene(QGraphicsScene):
         self.findChromosomeByName(name).deleteChromosome()
 
     def hideChromosome(self, name, bool):
-        for blastFamily in self.blastFamilies:
-            if name in blastFamily.parents:
-                blastFamily.setBlastVisibility(bool)
         self.findChromosomeByName(name).hideChromosome(bool)
+        for blastFamily in self.blastFamilies:
 
+            if name in self.blastFamily.parents and self.findChromosomeByName(blastFamily.parents[0]).isVisible() and self.findChromosomeByName(blastFamily.parents[1]).isVisible():
+                blastFamily.setBlastVisibility(bool)
+            else:
+                pass
 
 
 class GenomeViewer(QGraphicsView):
@@ -453,7 +468,6 @@ class Chromosome(QGraphicsRectItem):
 
             for cds in self.geneList:
                 cds.moveCDS(xdiff, ydiff)
-
 
     def createGene(self, w, pos, strand, name, type, qualifiers):
         cds = CDS(self, w, pos, strand, name, type, qualifiers)
@@ -762,10 +776,10 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.setZValue(1.0)
         self.tooltip = self.createTooltip()
 
-        #Will do for now, but it does not work as it should (the pen width does not scale with zoom level), so that's why I have to use a 250px border
+        #Fixed the pen issue!
         pen = QtGui.QPen()
-        pen.setWidth(250)
-        pen.setCosmetic(False)
+        pen.setWidth(0.5)
+        pen.setCosmetic(True)
         self.setPen(pen)
 
     def calculatePolygon(self):
@@ -785,7 +799,9 @@ class BlastPolygon(QGraphicsPolygonItem):
 
     def createTooltip(self):
         tooltip = (self.chrom1.name+ '\n' + str(int(self.pos1start)) + ' - ' + str(int(self.pos1end)) + '\n\n' +
-            self.chrom2.name+'\n' + str(int(self.pos2start)) + ' - ' + str(int(self.pos2end)) + '\n')
+            self.chrom2.name+'\n' + str(int(self.pos2start)) + ' - ' + str(int(self.pos2end)) + '\n\n' +
+             'Identity = ' + str(self.identity))
+
         return tooltip
 
     def changeSaturation(self):
@@ -1073,22 +1089,25 @@ class GBInfoWidget(QWidget):
 
     def generateGbTable(self, qtable):
         qtable.setRowCount(len(self.gbList))
-        qtable.setColumnCount(3)
-        qtable.setHorizontalHeaderLabels(['File', 'SeqName', 'Parse?'])
+        qtable.setColumnCount(4)
+        qtable.setHorizontalHeaderLabels(['File', 'Name', 'Length', 'Parse?'])
 
         qtable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         qtable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         qtable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        qtable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
 
         for i in range(0, len(self.gbList)):
             fileCell = QTableWidgetItem(self.gbList[i][0])
             idCell = QTableWidgetItem(self.gbList[i][1])
+            lengthCell = QTableWidgetItem(str(self.gbList[i][2]))
             parseCell = QCheckBox(self.gbTable)
             parseCell.setTristate(False)
             parseCell.setCheckState(QtCore.Qt.Checked)
             qtable.setItem(i, 0, fileCell)
             qtable.setItem(i, 1, idCell)
-            qtable.setCellWidget(i, 2, parseCell)
+            qtable.setItem(i, 2, lengthCell)
+            qtable.setCellWidget(i, 3, parseCell)
 
     def clickingParse(self):
         self.getSelectedSeqs()
@@ -1116,8 +1135,8 @@ class GBInfoWidget(QWidget):
     def getSelectedSeqs(self):
         finalTable = []
         for i in range(0, self.gbTable.rowCount()):
-            if self.gbTable.cellWidget(i, 2).isChecked() == True:
-                items = [self.gbTable.item(i,0).text(), self.gbTable.item(i,1).text()]
+            if self.gbTable.cellWidget(i, 3).isChecked() == True:
+                items = [self.gbTable.item(i,0).text(), self.gbTable.item(i,1).text(), self.gbTable.item(i,2).text()]
                 finalTable.append(items)
         self.gbInfoTrigger.emit(finalTable)
         self.close()
@@ -1359,7 +1378,7 @@ class MainWidget(QWidget):
                     if line[0] == '#':
                         pass
                     elif line.split('=')[0] == 'blastPath':
-                        self.blastPath = line.split('=')[1]
+                        self.blastPath = line.split('=')[1].rstrip('\n')
         except Exception:
             pass
 
@@ -1456,15 +1475,17 @@ class MainWidget(QWidget):
             self.window.gbInfoTrigger.connect(self.processGenbanks)
             self.window.show()
 
-    def processGenbanks(self, list):
-        seqList = list
+    def processGenbanks(self, queryList):
+        seqList = queryList
+        print(seqList)
         #create dictionary
         seqDict = {}
         for seq in seqList:
             if seq[0] not in seqDict.keys():
-                seqDict[seq[0]] = [seq[1]]
+                seqDict[seq[0]] = [[seq[1], seq[2]]]
+
             else:
-                seqDict[seq[0]].append(seq[1])
+                seqDict[seq[0]].append([seq[1], seq[2]])
         chromList = gbParser.parseGbFiles(seqDict.keys(), seqDict)
         print(len(chromList))
         for chrom in chromList:
