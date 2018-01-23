@@ -140,7 +140,7 @@ def getGbRecords(filenames):
         with open(file, 'r') as filehandle:
             inputFile = SeqIO.parse(filehandle, 'genbank')
             for record in inputFile:
-                gbFiles.append((file,record.id, len(record.seq)))
+                gbFiles.append((file,record.name, record.id, len(record.seq)))
     return gbFiles
 
 
@@ -151,13 +151,16 @@ def parseGbFiles(filenames, exceptionDict = None):
             inputFile = SeqIO.parse(filehandle, 'genbank')
             for record in inputFile:
                 for query in exceptionDict[file]:
-                    if record.id == query[0] and len(record.seq) == int(query[1]):
+                    if record.name == query[0] and record.id == query[1] and len(record.seq) == int(query[2]):
                         gbRecordList.append(record)
-                else:
-                    pass
+                    else:
+                        print('match not found!')
+                        print(record.name, query[0])
+                        print(record.id, query[1])
+                        print(len(record.seq), int(query[2]))
     fosmidList = []
     for gbRecord in gbRecordList:
-        newFosmid = Fosmid(name=gbRecord.id, length=len(gbRecord.seq), seq=gbRecord.seq)
+        newFosmid = Fosmid(name=gbRecord.name, length=len(gbRecord.seq), seq=gbRecord.seq)
         featureList = gbRecord.features
         for rawFeature in featureList:
 
@@ -185,7 +188,7 @@ def parseGbFile(filename):
         print(len(gbFiles), 'records from', len(inputFiles), 'file(s) in input\n')
     fosmidList = []
     for gbRecord in gbFiles:
-        newFosmid = Fosmid(name=gbRecord.id, length=len(gbRecord.seq), seq=gbRecord.seq)
+        newFosmid = Fosmid(name=gbRecord.name, length=len(gbRecord.seq), seq=gbRecord.seq)
         featureList = gbRecord.features
         for rawFeature in featureList:
             newFeature = Feature(newFosmid, rawFeature)

@@ -183,7 +183,6 @@ def getFastaFile(chromList):
             blastFile.write(str(chrom.sequence) + '\n')
 
 
-
 def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     #Create blast db
     subprocess.call([blastPath + 'makeblastdb', '-in', 'blastSeqs_flex.temp.fasta', '-out', 'dbTemp', '-dbtype', 'nucl'])
@@ -236,6 +235,9 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
         family.removeOwnHits()
         if filterBlastParameters['removeAdj'][0] == True:
             family.mergeBlastList(filterBlastParameters['removeAdj'][1], 1.50)
+        else:
+            print('no merge!')
+
 
         newFamily = genomeScene.createBlastFamily(family.parents)
         for BlastHit in family:
@@ -319,6 +321,11 @@ class GenomeScene(QGraphicsScene):
                 cds.applyStyle(paintOrderList)
         self.update()
 
+    def sortChromosomesByHeight(self):
+        self.chrList.sort(key=lambda Chromosome: Chromosome.pos().y())
+        for chr in self.chrList:
+            print(chr.name)
+
     def deleteChromosome(self, name):
         deleteBlastList = []
         for blastFamily in self.blastFamilies:
@@ -395,8 +402,6 @@ class GenomeViewer(QGraphicsView):
         else:
             QGraphicsView.mousePressEvent(self, QMouseEvent)
 
-
-
     def mouseMoveEvent(self, QMouseEvent):
         if self.panning == True:
 
@@ -420,7 +425,6 @@ class GenomeViewer(QGraphicsView):
 
         else:
             QGraphicsView.mouseReleaseEvent(self, QMouseEvent)
-
 
     def fitNewObject(self):
         self.ensureVisible(self.scene().sceneRect())
@@ -802,10 +806,12 @@ class BlastPolygon(QGraphicsPolygonItem):
         identityValue = float(self.identity) / 100
         newSat = oldColor.saturation()
         newVal = oldColor.value()
-        if newSat > 0:
+        if newSat > 0 and identityValue < 0.95:
+            newSat = int(oldColor.saturation() * identityValue * 0.9)
+        elif newSat > 0 and identityValue > 0.95:
             newSat = int(oldColor.saturation() * identityValue)
-        if newVal < 255:
-            newVal = int(oldColor.value() * (1/identityValue))
+        #if newVal < 255:
+            #newVal = int(oldColor.value() * (1/identityValue))
         newColor = QtGui.QColor().fromHsv(oldColor.hue(), newSat, newVal, 255)
         newBrush = QtGui.QBrush(newColor)
         self.brush = newBrush
@@ -1017,7 +1023,7 @@ class BlastInfoWidget(QWidget):
         self.center()
 
     def getBlastSettings(self):
-        self.window = BlastSettingsWidget()
+        self.window = BlastSettingsWidget(self.blastSettings)
         self.window.show()
         self.window.blastSettingsTrigger.connect(self.storeBlastSettings)
 
@@ -1043,6 +1049,7 @@ class BlastInfoWidget(QWidget):
 class GBInfoWidget(QWidget):
 
     gbInfoTrigger = QtCore.pyqtSignal(list)
+    searchPathTrigger = QtCore.pyqtSignal(list)
 
     def __init__(self, gbList):
         super().__init__()
@@ -1082,25 +1089,28 @@ class GBInfoWidget(QWidget):
 
     def generateGbTable(self, qtable):
         qtable.setRowCount(len(self.gbList))
-        qtable.setColumnCount(4)
-        qtable.setHorizontalHeaderLabels(['File', 'Name', 'Length', 'Parse?'])
+        qtable.setColumnCount(5)
+        qtable.setHorizontalHeaderLabels(['File', 'Genbank Locus','Genbank Accession' , 'Length', 'Parse?'])
 
         qtable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         qtable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         qtable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         qtable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        qtable.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
         for i in range(0, len(self.gbList)):
             fileCell = QTableWidgetItem(self.gbList[i][0])
-            idCell = QTableWidgetItem(self.gbList[i][1])
-            lengthCell = QTableWidgetItem(str(self.gbList[i][2]))
+            idCell = QTableWidgetItem(self.gbList[i][2])
+            locusCell = QTableWidgetItem(self.gbList[i][1])
+            lengthCell = QTableWidgetItem(str(self.gbList[i][3]))
             parseCell = QCheckBox(self.gbTable)
             parseCell.setTristate(False)
             parseCell.setCheckState(QtCore.Qt.Checked)
             qtable.setItem(i, 0, fileCell)
-            qtable.setItem(i, 1, idCell)
-            qtable.setItem(i, 2, lengthCell)
-            qtable.setCellWidget(i, 3, parseCell)
+            qtable.setItem(i, 1, locusCell)
+            qtable.setItem(i, 2, idCell)
+            qtable.setItem(i, 3, lengthCell)
+            qtable.setCellWidget(i, 4, parseCell)
 
     def clickingParse(self):
         self.getSelectedSeqs()
@@ -1116,6 +1126,7 @@ class GBInfoWidget(QWidget):
                                                   'Genbank Files (*.genbank *.gb *.gbff *.gbk *.pgbk) ;; All Files (*.*)')
         if plotHandle[0]:
             newgbList = gbParser.getGbRecords(plotHandle[0])
+            self.searchPathTrigger.emit(plotHandle[0])
             for item in newgbList:
                 self.gbList.append(item)
         self.generateGbTable(self.gbTable)
@@ -1128,8 +1139,9 @@ class GBInfoWidget(QWidget):
     def getSelectedSeqs(self):
         finalTable = []
         for i in range(0, self.gbTable.rowCount()):
-            if self.gbTable.cellWidget(i, 3).isChecked() == True:
-                items = [self.gbTable.item(i,0).text(), self.gbTable.item(i,1).text(), self.gbTable.item(i,2).text()]
+            if self.gbTable.cellWidget(i, 4).isChecked() == True:
+                items = [self.gbTable.item(i,0).text(), self.gbTable.item(i,1).text(), self.gbTable.item(i,2).text(),
+                         self.gbTable.item(i,3).text()]
                 finalTable.append(items)
         self.gbInfoTrigger.emit(finalTable)
         self.close()
@@ -1137,11 +1149,10 @@ class GBInfoWidget(QWidget):
 
 class BlastSettingsWidget(QWidget):
     blastSettingsTrigger = QtCore.pyqtSignal(dict)
-    def __init__(self):
+    def __init__(self, blastSettings):
         super().__init__()
         self.setGeometry(0, 0, 600, 200)
-        self.blastSettings = {'blastType':'blastn', 'blastMatrix':'BLOSUM62', 'minIdent':'90.0', 'minAln':'1000',
-                             'mergeAdj':[False, 0], 'saveFile':False}
+        self.blastSettings = blastSettings
         self.initUI()
 
     def initUI(self):
@@ -1151,11 +1162,15 @@ class BlastSettingsWidget(QWidget):
 
         self.blastTypeGroup = QButtonGroup()
         self.buttonBlastn = QRadioButton('blastn')
-        self.buttonBlastn.setChecked(True)
         self.buttonTblastx = QRadioButton('tblastx')
+        if self.blastSettings['blastType'] == 'blastn':
+            self.buttonBlastn.setChecked(True)
+        else:
+            self.buttonTblastx.setChecked(True)
         self.blastTypeGroup.addButton(self.buttonBlastn)
         self.blastTypeGroup.addButton(self.buttonBlastn)
         self.blastTypeGroup.addButton(self.buttonTblastx)
+
         self.comboMatrix = QComboBox()
         self.comboMatrix.addItem('BLOSUM62')
         self.comboMatrix.addItem('BLOSUM90')
@@ -1165,10 +1180,16 @@ class BlastSettingsWidget(QWidget):
         self.comboMatrix.addItem('PAM70')
         self.comboMatrix.addItem('PAM30')
 
+        comboIndex = self.comboMatrix.findText(self.blastSettings['blastMatrix'])
+        if comboIndex > 0:
+            self.comboMatrix.setCurrentIndex(comboIndex)
+        else:
+            pass
+
         self.labelMinIdent = QLabel()
         self.labelMinIdent.setText('Minimum Identity (0-100)%')
         self.linEditMinIdent = QLineEdit()
-        self.linEditMinIdent.setText('90.0')
+        self.linEditMinIdent.setText(self.blastSettings['minIdent'])
 
         self.labelMinAln = QLabel()
         self.labelMinAln.setText('Minimum Alignment')
@@ -1183,10 +1204,22 @@ class BlastSettingsWidget(QWidget):
         self.linEditMergeBlasts = QLineEdit()
         self.linEditMergeBlasts.setReadOnly(True)
 
+        if self.blastSettings['mergeAdj'][0] == True:
+            self.checkMergeBlasts.setCheckState(QtCore.Qt.Checked)
+            self.linEditMergeBlasts.setText(self.blastSettings['mergeAdj'][1])
+
+        else:
+            self.checkMergeBlasts.setCheckState(QtCore.Qt.Unchecked)
+            self.linEditMergeBlasts.setReadOnly(True)
+
         self.labelSaveFiles = QLabel()
         self.labelSaveFiles.setText('Save Blast file?')
         self.checkSaveFiles = QCheckBox()
         self.checkSaveFiles.setTristate(False)
+        if self.blastSettings['saveFile'] == True:
+            self.checkSaveFiles.setCheckState(QtCore.Qt.Checked)
+        else:
+            self.checkSaveFiles.setCheckState(QtCore.Qt.Unchecked)
 
         self.buttonSave = QPushButton('Save and exit')
         self.buttonSave.clicked.connect(self.saveSettings)
@@ -1232,14 +1265,24 @@ class BlastSettingsWidget(QWidget):
         if self.buttonTblastx.isChecked() == True:
             self.blastSettings['blastType'] = 'tblastx'
             self.blastSettings['blastMatrix'] = self.comboMatrix.currentText()
+        else:
+            self.blastSettings['blastType'] = 'blastn'
 
         self.blastSettings['minIdent'] = self.linEditMinIdent.text()
         self.blastSettings['minAln'] = self.linEditMinAln.text()
+
         if self.checkMergeBlasts.isChecked() == True:
             self.blastSettings['mergeAdj'][0] = True
             self.blastSettings['mergeAdj'][1] = self.linEditMergeBlasts.text()
+        else:
+            self.blastSettings['mergeAdj'][0] = False
+            self.blastSettings['mergeAdj'][1] = 50
+
         if self.checkSaveFiles.isChecked() == True:
             self.blastSettings['saveFile'] = True
+        else:
+            self.blastSettings['saveFile'] = False
+
         self.blastSettingsTrigger.emit(self.blastSettings)
         self.close()
 
@@ -1290,7 +1333,7 @@ class MainWidget(QWidget):
         self.view = GenomeViewer(self.scene)
 
         self.blastPath = ''
-
+        self.searchPath = './'
         self.loadConfigFile()
 
 
@@ -1335,6 +1378,9 @@ class MainWidget(QWidget):
         scramble = QAction('&Scramble Sequences', self)
         scramble.triggered.connect(self.scrambleChrms)
 
+        debug = QAction('&Debug', self)
+        debug.triggered.connect(self.printWindowSizes)
+
 
         menuBar = QMenuBar()
         fileMenu = menuBar.addMenu('&File')
@@ -1354,6 +1400,7 @@ class MainWidget(QWidget):
         editMenu.addAction(cleanCanvas)
         editMenu.addAction(changeBlastColor)
         debugMenu.addAction(scramble)
+        debugMenu.addAction(debug)
 
         layVBox = QVBoxLayout()
         layVBox.addWidget(menuBar)
@@ -1388,21 +1435,25 @@ class MainWidget(QWidget):
         #self.signal1 = self.window
 
     def showBlastDialog(self):
-        blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', './', 'Blast Files (*.blastn *.plot.blastn.clean' +
+        blastHandle = QFileDialog.getOpenFileName(self, 'Select Blast File', self.searchPath, 'Blast Files (*.blastn *.plot.blastn.clean' +
                 '*.blastp *.plot.blastp.clean) ;; All Files (*.*)')
         if blastHandle[0]:
+            self.getDirectoryFromPath(blastHandle[0])
             parseBlastFile(blastHandle[0], self.scene)
 
     def showPlotDialog(self):
-        plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', './', 'Flex Files (*.plot *.flex) ;; All Files (*.*)')
+        plotHandle = QFileDialog.getOpenFileName(self, 'Select Plot File', self.searchPath, 'Flex Files (*.plot *.flex) ;; All Files (*.*)')
         if plotHandle[0]:
             try:
                 newScene = GenomeScene()
                 self.view.setScene(newScene)
                 if plotHandle[0].split('.')[-1] == 'plot':
+                    self.getDirectoryFromPath(plotHandle[0])
                     parseOldGenomeFile(plotHandle[0], newScene)
                 elif plotHandle[0].split('.')[-1] == 'flex':
+                    self.getDirectoryFromPath(plotHandle[0])
                     loadFlexFile(plotHandle[0], newScene)
+
                 #newScene.applyStyle('./style.txt')
                 self.scene = newScene
                 #self.view = newView
@@ -1427,10 +1478,13 @@ class MainWidget(QWidget):
         self.window.show()
 
     def saveScreenshotDialog(self):
-        scPath = QFileDialog.getSaveFileName(self, 'Select Directory to save', './', 'PNG Format (*.png) ;; SVG Format (*.svg) ;; All Files (*.*)')
+        scPath = QFileDialog.getSaveFileName(self, 'Select Directory to save', self.searchPath, 'PNG Format (*.png) ;; SVG Format (*.svg) ;; All Files (*.*)')
         if scPath[1] == 'PNG Format (*.png)':
+            self.getDirectoryFromPath(scPath[0])
             self.saveScreenshotPNG(scPath[0])
+
         else:
+            self.getDirectoryFromPath(scPath[0])
             self.saveScreenshotSVG(scPath[0])
 
     def saveScreenshotPNG(self, path):
@@ -1456,16 +1510,18 @@ class MainWidget(QWidget):
         painter.end()
 
     def saveFlexFile(self):
-        fileHandle = QFileDialog.getSaveFileName(self, 'Select Directory to save', './')
+        fileHandle = QFileDialog.getSaveFileName(self, 'Select Directory to save', self.searchPath)
         if fileHandle[0]:
             saveFlexFile(self.scene, fileHandle[0])
 
     def showGbDialog(self):
-        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './', 'Genbank Files (*.genbank *.gb *.gbff *.gbk *.pgbk) ;; All Files (*.*)')
+        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', self.searchPath, 'Genbank Files (*.genbank *.gb *.gbff *.gbk *.pgbk) ;; All Files (*.*)')
         if plotHandle[0]:
+            self.getDirectoryFromPath(plotHandle[0])
             gbList = gbParser.getGbRecords(plotHandle[0])
             self.window = GBInfoWidget(gbList)
             self.window.gbInfoTrigger.connect(self.processGenbanks)
+            self.window.searchPathTrigger.connect(self.getDirectoryFromPath)
             self.window.show()
 
     def processGenbanks(self, queryList):
@@ -1474,10 +1530,10 @@ class MainWidget(QWidget):
         seqDict = {}
         for seq in seqList:
             if seq[0] not in seqDict.keys():
-                seqDict[seq[0]] = [[seq[1], seq[2]]]
+                seqDict[seq[0]] = [[seq[1], seq[2], seq[3]]]
 
             else:
-                seqDict[seq[0]].append([seq[1], seq[2]])
+                seqDict[seq[0]].append([seq[1], seq[2], seq[3]])
         chromList = gbParser.parseGbFiles(seqDict.keys(), seqDict)
         for chrom in chromList:
             newChrom = self.scene.createChromosome(chrom.length, chrom.name, 0, 0, chrom.seq)
@@ -1501,6 +1557,7 @@ class MainWidget(QWidget):
             self.scene.applyStyle(styleHandle[0])
 
     def printWindowSizes(self):
+        self.scene.sortChromosomesByHeight()
         viewPortRect = QtCore.QRect(0, 0, self.view.viewport().width(), self.view.viewport().height())
         visibleSceneRect = self.view.mapToScene(viewPortRect).boundingRect()
         print('INIT STATES')
@@ -1530,6 +1587,18 @@ class MainWidget(QWidget):
 
             for cds in chr.geneList:
                 cds.moveCDS(xdiff, ydiff)
+
+    def getDirectoryFromPath(self, path):
+        if path is list:
+            splitPath = path[-1].split('/')
+        else:
+            splitPath = path[-1].split('/')
+        del splitPath[-1]
+        newPath = ''
+
+        for pathPart in splitPath:
+            newPath += pathPart + '/'
+        self.searchPath = newPath
 
 
 app = QApplication(sys.argv)

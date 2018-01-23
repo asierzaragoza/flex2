@@ -312,7 +312,7 @@ class BlastHit():
         self._status = None
 
 #Basic filtering: self hits, min length, min identity
-def parseBlastFile(blastFile, minIdentity = 90, minAln = 1000):
+def parseBlastFile(blastFile, minIdentity = 0, minAln = 0):
     with open(blastFile, 'r') as blastResults:
         causeDict = {'Self Hits':0, 'Low identity':0, 'Small Match':0}
         nOfHits = 0
