@@ -199,7 +199,7 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     else:
         if blastSettings['blastType'] == 'blastn':
             subprocess.call([blastPath + 'blastn', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out',
-                             'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6'])
+                             'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6', '-ungapped'])
         else:
             subprocess.call([blastPath + 'tblastx', '-matrix', str(blastSettings['blastMatrix']), '-query',
                              'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast',
@@ -251,6 +251,7 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
         os.rename('blastSeqs_flex.blast', 'blastSequences_flex2_original.blast')
     else:
         os.remove('blastSeqs_flex.blast')
+    os.remove('blastSeqs_flex.temp.fasta')
 
 
 def parseStyleFile(filename):
@@ -432,7 +433,7 @@ class GenomeViewer(QGraphicsView):
 
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, name, sequence=None):
-        self.h = 4000
+        self.h = 2000
         self.w = w
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
@@ -489,7 +490,7 @@ class Chromosome(QGraphicsRectItem):
 
 class CDS(QGraphicsPolygonItem):
     def __init__(self, chromosome, w, pos, strand, name, type, qualifiers):
-        self.h = 8000
+        self.h = chromosome.h * 2
         self.w = w
         self.position = pos
         self.parent = chromosome
@@ -978,7 +979,7 @@ class BlastInfoWidget(QWidget):
         self.chrList = chrList
         self.initUI()
         self.blastSettings = {'blastType': 'blastn', 'blastMatrix': 'BLOSUM62', 'minIdent': '90.0', 'minAln': '1000',
-                              'mergeAdj': [False, 0], 'saveFile': False}
+                              'mergeAdj': [False, 0], 'saveFile': False, 'blastYpos':False}
 
     def initUI(self):
         self.setWindowTitle('Perform Blast Comparison')
@@ -1151,7 +1152,7 @@ class BlastSettingsWidget(QWidget):
     blastSettingsTrigger = QtCore.pyqtSignal(dict)
     def __init__(self, blastSettings):
         super().__init__()
-        self.setGeometry(0, 0, 600, 200)
+        self.setGeometry(0, 0, 650, 200)
         self.blastSettings = blastSettings
         self.initUI()
 
@@ -1221,6 +1222,13 @@ class BlastSettingsWidget(QWidget):
         else:
             self.checkSaveFiles.setCheckState(QtCore.Qt.Unchecked)
 
+        self.labelBlastYPos = QLabel()
+        self.labelBlastYPos.setText('Perform Blast based on Y pos')
+        self.checkBlastYPos = QCheckBox()
+        self.checkBlastYPos.setTristate(False)
+        if self.blastSettings['blastYpos'] == True:
+            self.checkBlastYPos.setCheckState(QtCore.Qt.Checked)
+
         self.buttonSave = QPushButton('Save and exit')
         self.buttonSave.clicked.connect(self.saveSettings)
         self.buttonExit = QPushButton('Cancel')
@@ -1239,8 +1247,10 @@ class BlastSettingsWidget(QWidget):
         layGbox.addWidget(self.linEditMergeBlasts, 4, 2)
         layGbox.addWidget(self.labelSaveFiles, 5, 0)
         layGbox.addWidget(self.checkSaveFiles, 5, 1)
-        layGbox.addWidget(self.buttonExit, 6, 1)
-        layGbox.addWidget(self.buttonSave, 6, 2)
+        layGbox.addWidget(self.labelBlastYPos, 6, 0)
+        layGbox.addWidget(self.checkBlastYPos, 6, 1)
+        layGbox.addWidget(self.buttonExit, 7, 1)
+        layGbox.addWidget(self.buttonSave, 7, 2)
 
         self.setLayout(layGbox)
 
@@ -1282,6 +1292,11 @@ class BlastSettingsWidget(QWidget):
             self.blastSettings['saveFile'] = True
         else:
             self.blastSettings['saveFile'] = False
+
+        if self.checkBlastYPos.isChecked() == True:
+            self.blastSettings['blastYpos'] = True
+        else:
+            self.blastSettings['blastYpos'] = False
 
         self.blastSettingsTrigger.emit(self.blastSettings)
         self.close()
@@ -1463,8 +1478,8 @@ class MainWidget(QWidget):
                 self.view.setScene(self.scene)
 
     def deleteBlasts(self):
-        for blast in self.scene.blastFamilies:
-            blast.deleteFamily()
+        for blastFamily in self.scene.blastFamilies:
+            blastFamily.deleteFamily()
 
     def getNewCanvas(self):
         newScene = GenomeScene()
@@ -1548,8 +1563,20 @@ class MainWidget(QWidget):
         chrList = []
         for seqName in seqList:
             chrList.append(self.scene.findChromosomeByName(seqName))
-        getFastaFile(chrList)
-        runBlastOnSeqs(self.blastPath ,blastSettings, self.scene)
+        print(len(chrList))
+        if blastSettings['blastYpos']:
+            self.blastBasedOnYPos(chrList, blastSettings)
+        else:
+            getFastaFile(chrList)
+            runBlastOnSeqs(self.blastPath ,blastSettings, self.scene)
+
+    def blastBasedOnYPos(self, chrList, blastSettings):
+        chrList.sort(key=lambda Chromosome: Chromosome.pos().y())
+
+        for i in range(0, len(chrList)-1):
+            currList = [chrList[i], chrList[i + 1]]
+            getFastaFile(currList)
+            runBlastOnSeqs(self.blastPath,  blastSettings, self.scene)
 
     def loadStyleFile(self):
         styleHandle = QFileDialog.getOpenFileName(self, 'Select Style File', './', 'Text Files (*.txt) ;; All Files (*.*)')
