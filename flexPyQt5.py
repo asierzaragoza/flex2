@@ -2,12 +2,12 @@ import sys, os, random, traceback, subprocess, platform
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
     QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget, QInputDialog
-
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import blastParser, gbParser
 import xml.etree.ElementTree as ET
+import cProfile
 
 
 #I/O FUNCTIONS
@@ -199,7 +199,7 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
     else:
         if blastSettings['blastType'] == 'blastn':
             subprocess.call([blastPath + 'blastn', '-query', 'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out',
-                             'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6', '-ungapped'])
+                             'blastSeqs_flex.blast', '-num_threads', '4', '-outfmt', '6' ])
         else:
             subprocess.call([blastPath + 'tblastx', '-matrix', str(blastSettings['blastMatrix']), '-query',
                              'blastSeqs_flex.temp.fasta', '-db', 'dbTemp', '-out', 'blastSeqs_flex.blast',
@@ -354,6 +354,7 @@ class GenomeViewer(QGraphicsView):
         self.panning = False
         self.panPos = None
         self.zoomLvl = 0
+        self.changeShapeOnZoom = True
 
         #OpenGL support is a can of worms I'd prefer not to open
         #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
@@ -386,13 +387,11 @@ class GenomeViewer(QGraphicsView):
         viewportWidth = int(self.scene().views()[0].viewport().width())
         target = viewportWidth / visibleSceneRectWidth
 
-
-        for chrom in self.scene().chrList:
-
-
-            for cds in chrom.geneList:
-                if cds.type == 'CDS':
-                    cds.checkShape(target)
+        if self.changeShapeOnZoom == True:
+            for chrom in self.scene().chrList:
+                for cds in chrom.geneList:
+                    if cds.type == 'CDS':
+                        cds.checkShape(target)
         #self.scene().views()[0].viewport().update(viewPortRect)
 
     def mousePressEvent(self, QMouseEvent):
@@ -433,7 +432,7 @@ class GenomeViewer(QGraphicsView):
 
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, name, sequence=None):
-        self.h = 2000
+        self.h = 8000
         self.w = w
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
@@ -496,6 +495,7 @@ class CDS(QGraphicsPolygonItem):
         self.parent = chromosome
         self.qualifiers = qualifiers
         self.strand = strand
+
         if type == 'CDS' or type == 'gene':
             self.type = 'CDS'
         else:
@@ -505,10 +505,10 @@ class CDS(QGraphicsPolygonItem):
         y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
         if self.type == 'repeat_region':
             shapes = self.calculateShapes(self.parent, pos, type = 'repeat')
-        elif self.type == 'misc_feature':
-            shapes = self.calculateShapes(self.parent, pos, type='misc')
-        else:
+        elif self.type == 'CDS':
             shapes = self.calculateShapes(self.parent, pos, type='cds')
+        else:
+            shapes = self.calculateShapes(self.parent, pos, type='misc')
 
         self.rectPolygon = shapes[0]
         self.trianPolygon = shapes[1]
@@ -1086,6 +1086,7 @@ class GBInfoWidget(QWidget):
 
         self.setLayout(layVBox)
         self.center()
+        self.setWindowState(QtCore.Qt.WindowActive)
 
 
     def generateGbTable(self, qtable):
@@ -1478,14 +1479,14 @@ class MainWidget(QWidget):
                 self.view.setScene(self.scene)
 
     def deleteBlasts(self):
-        for blastFamily in self.scene.blastFamilies:
-            blastFamily.deleteFamily()
+        length = len(self.scene.blastFamilies)
+        for i in range(0, length):
+            self.scene.blastFamilies[0].deleteFamily()
 
     def getNewCanvas(self):
         newScene = GenomeScene()
         self.scene = newScene
         self.view.setScene(newScene)
-
 
     def getBlasts(self):
         self.window = BlastInfoWidget(self.scene.chrList)
