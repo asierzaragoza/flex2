@@ -1,13 +1,14 @@
 import sys, os, random, traceback, subprocess, platform
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QDesktopWidget, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsPolygonItem, \
     QMainWindow, QMenuBar, QAction, QFileDialog, QTableWidget, QTableWidgetItem, QCheckBox, QGraphicsItem, QLabel, QColorDialog, QHeaderView, QPushButton, \
-    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget, QInputDialog
+    QRadioButton, QButtonGroup, QComboBox, QLineEdit, QGridLayout, QTableView, QTabWidget, QInputDialog, QSlider
 import PyQt5.QtSvg as QtSvg
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import blastParser, gbParser
 import xml.etree.ElementTree as ET
 import cProfile
+
 
 
 #I/O FUNCTIONS
@@ -289,18 +290,21 @@ def parseStyleFile(filename):
 
 #CLASS OBJECTS
 class GenomeScene(QGraphicsScene):
-    def __init__(self):
+    def __init__(self, settings):
         super().__init__()
         self.setMinimumRenderSize(1.0)
         #Removing the index improves performance significantly
         self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.chrList = []
         self.blastFamilies = []
+        self.fosmidSize = int(settings['fosmidSize'])
+        self.displayType = settings['displayType']
         #self.setSceneRect(0 , 0, 25000, 25000)
 
     def createChromosome(self, w, name, x, y, sequence = None):
         goodName = self.checkChromosomeNames(name)
-        chr = Chromosome(0, 0, w, goodName, sequence)
+        h = self.fosmidSize
+        chr = Chromosome(0, 0, w, h, goodName, sequence)
         chr.setPos(x, y)
         self.chrList.append(chr)
         self.addItem(chr)
@@ -369,6 +373,11 @@ class GenomeScene(QGraphicsScene):
             else:
                 pass
 
+    def fosmidSizeChanged(self, settings):
+        self.fosmidSize = int(settings['fosmidSize'])
+        for chr in self.chrList:
+            chr.fosmidSizeChanged(self.fosmidSize)
+
 
 class GenomeViewer(QGraphicsView):
     def __init__(self, scene):
@@ -378,6 +387,7 @@ class GenomeViewer(QGraphicsView):
         self.panPos = None
         self.zoomLvl = 0
         self.changeShapeOnZoom = True
+        self.displayType = scene.displayType
 
         #OpenGL support is a can of worms I'd prefer not to open
         #self.setViewport(GLWidget(parent = self, flags=self.windowFlags()))
@@ -413,7 +423,7 @@ class GenomeViewer(QGraphicsView):
         if self.changeShapeOnZoom == True:
             for chrom in self.scene().chrList:
                 for cds in chrom.geneList:
-                    if cds.type == 'CDS':
+                    if cds.type == 'CDS' and self.displayType == 'adaptative':
                         cds.checkShape(target)
         #self.scene().views()[0].viewport().update(viewPortRect)
 
@@ -454,8 +464,8 @@ class GenomeViewer(QGraphicsView):
 
 
 class Chromosome(QGraphicsRectItem):
-    def __init__(self, x, y, w, name, sequence=None):
-        self.h = 8000
+    def __init__(self, x, y, w, h, name, sequence=None):
+        self.h = h
         self.w = w
         super().__init__(x, y, self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
@@ -494,6 +504,7 @@ class Chromosome(QGraphicsRectItem):
         self.geneList.append(cds)
         self.scene().addItem(cds)
         self.scene().views()[0].fitInView(self.scene().sceneRect(), QtCore.Qt.KeepAspectRatio)
+        cds.checkShape()
         return cds
 
     def deleteChromosome(self):
@@ -509,6 +520,13 @@ class Chromosome(QGraphicsRectItem):
             cds.setVisible(bool)
         self.setVisible(bool)
 
+    def fosmidSizeChanged(self, h):
+        self.h = h
+        self.setRect(self.pos().x(), self.pos().y(), self.w, self.h)
+        self.boundingRect = QtGui.QPolygonF(self.pos().x(), self.pos().y(), self.w, self.h)
+        for cds in self.geneList:
+            cds.fosmidSizeChanged(self.h)
+
 
 class CDS(QGraphicsPolygonItem):
     def __init__(self, chromosome, w, pos, strand, name, type, qualifiers):
@@ -518,6 +536,7 @@ class CDS(QGraphicsPolygonItem):
         self.parent = chromosome
         self.qualifiers = qualifiers
         self.strand = strand
+        self.displayType = self.parent.scene().displayType
 
         if type == 'CDS' or type == 'gene':
             self.type = 'CDS'
@@ -537,7 +556,6 @@ class CDS(QGraphicsPolygonItem):
         self.trianPolygon = shapes[1]
         self.arrowPolygon = shapes[2]
 
-
         super().__init__(self.rectPolygon)
         self.setPos(QtCore.QPoint(x, y))
         self.name = name
@@ -545,20 +563,20 @@ class CDS(QGraphicsPolygonItem):
         if self.type == 'repeat_region':
             self.style = QtGui.QBrush(QtCore.Qt.cyan)
             self.setBrush(self.style)
-        elif self.type == 'misc_feature':
-            self.style = QtGui.QBrush(QtCore.Qt.darkMagenta)
-            self.setBrush(self.style)
-        else:
+        elif self.type == 'CDS':
             self.style = QtGui.QBrush(QtCore.Qt.darkGreen)
             self.setBrush(self.style)
             pen = QtGui.QPen()
             pen.setWidth(50)
             pen.setCosmetic(False)
             self.setPen(pen)
+        else:
+            self.style = QtGui.QBrush(QtCore.Qt.darkMagenta)
+            self.setBrush(self.style)
+
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setZValue(3.0)
 
-        # Will do for now, but it does not work as it should (the pen width does not scale with zoom level), so that's why I have to use a 250px border
 
     def moveCDS(self, xdiff, ydiff):
         self.setPos(QtCore.QPoint(self.pos().x() + xdiff, self.pos().y() + ydiff))
@@ -590,35 +608,36 @@ class CDS(QGraphicsPolygonItem):
         self.window.show()
 
     def checkShape(self, target=None):
-        if target is None:
-            viewPortRect = QtCore.QRect(0, 0, self.scene().views()[0].viewport().width(),
-                                        self.scene().views()[0].viewport().height())
-            visibleSceneRectWidth = int(self.scene().views()[0].mapToScene(viewPortRect).boundingRect().width())
-            viewportWidth = int(self.scene().views()[0].viewport().width())
-            target = viewportWidth / visibleSceneRectWidth
 
-        if (self.w * target) > 1 and self.polygon() != self.arrowPolygon:
+        if self.displayType == 'arrows' and self.arrowPolygon is not None:
             self.setPolygon(self.arrowPolygon)
+            self.prepareGeometryChange()
+            self.update()
+        elif self.displayType == 'rectangles':
+            self.setPolygon(self.rectPolygon)
             self.prepareGeometryChange()
             self.update()
 
         else:
-            pass
+            if target is None:
+                viewPortRect = QtCore.QRect(0, 0, self.scene().views()[0].viewport().width(),
+                                            self.scene().views()[0].viewport().height())
+                visibleSceneRectWidth = int(self.scene().views()[0].mapToScene(viewPortRect).boundingRect().width())
+                viewportWidth = int(self.scene().views()[0].viewport().width())
+                target = viewportWidth / visibleSceneRectWidth
 
-        '''
-        elif (self.w * target) < 15 and self.polygon() != self.rectPolygon:
-            self.setPolygon(self.rectPolygon)
-            self.prepareGeometryChange()
-            self.update()
-        '''
+            if (self.w * target) > 10 and self.polygon() != self.arrowPolygon:
+                self.setPolygon(self.arrowPolygon)
+                self.prepareGeometryChange()
+                self.update()
 
+            elif (self.w * target) < 10 and self.polygon() != self.rectPolygon:
+                self.setPolygon(self.rectPolygon)
+                self.prepareGeometryChange()
+                self.update()
 
-        '''
-              elif (self.w * target) > 10 and (self.w * target) < 25 and self.polygon() != self.trianPolygon:
-                  self.setPolygon(self.trianPolygon)
-                  self.prepareGeometryChange()
-                  self.update()
-        '''
+            else:
+                pass
 
     def calculateShapes(self, chromosome, pos, type):
 
@@ -736,6 +755,22 @@ class CDS(QGraphicsPolygonItem):
                     continue
             self.modifyBrush(newColor[0], newColor[1], newColor[2])
 
+    def fosmidSizeChanged(self, h):
+        self.h = h * 2
+        if self.type == 'repeat_region':
+            shapes = self.calculateShapes(self.parent, self.pos, type = 'repeat')
+        elif self.type == 'CDS':
+            shapes = self.calculateShapes(self.parent, self.pos, type='cds')
+        else:
+            shapes = self.calculateShapes(self.parent, self.pos, type='misc')
+
+        self.rectPolygon = shapes[0]
+        self.trianPolygon = shapes[1]
+        self.arrowPolygon = shapes[2]
+
+        self.checkShape()
+
+
 
 class BlastFamily:
     def __init__(self, parents, genomeScene):
@@ -745,12 +780,12 @@ class BlastFamily:
 
     def createPoly(self, BlastHit):
         blastPoly = BlastPolygon(self.genomeScene.findChromosomeByName(BlastHit.parents[0]), self.genomeScene.findChromosomeByName(BlastHit.parents[1]),
-                                 BlastHit.seq1pos[0], BlastHit.seq1pos[1], BlastHit.seq2pos[0], BlastHit.seq2pos[1], BlastHit.identity)
+                                 BlastHit.seq1pos[0], BlastHit.seq1pos[1], BlastHit.seq2pos[0], BlastHit.seq2pos[1], BlastHit.identity, BlastHit.mismatches)
         self.blastPolyList.append(blastPoly)
         self.genomeScene.addItem(blastPoly)
 
-    def createPoly2(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity):
-        blastPoly = BlastPolygon(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity)
+    def createPoly2(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity, mismatches):
+        blastPoly = BlastPolygon(chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity, mismatches)
         self.blastPolyList.append(blastPoly)
         self.genomeScene.addItem(blastPoly)
 
@@ -779,7 +814,7 @@ class BlastFamily:
 
 
 class BlastPolygon(QGraphicsPolygonItem):
-    def __init__(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity):
+    def __init__(self, chrom1, chrom2, pos1start, pos1end, pos2start, pos2end, identity, mismatches):
         self.pos1start = pos1start
         self.pos1end = pos1end
         self.pos2start = pos2start
@@ -787,6 +822,7 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.chrom1 = chrom1
         self.chrom2 = chrom2
         self.identity = identity
+        self.mismatches = mismatches
         self.brush = QtGui.QBrush(QtCore.Qt.darkRed)
 
         point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, self.chrom1.pos().y())
@@ -826,7 +862,7 @@ class BlastPolygon(QGraphicsPolygonItem):
     def createTooltip(self):
         tooltip = (self.chrom1.name+ '\n' + str(int(self.pos1start)) + ' - ' + str(int(self.pos1end)) + '\n\n' +
             self.chrom2.name+'\n' + str(int(self.pos2start)) + ' - ' + str(int(self.pos2end)) + '\n\n' +
-             'Identity = ' + str(self.identity))
+             'Identity = ' + str(self.identity) + '\n\n' + 'Mismatches = ' + str(self.mismatches))
 
         return tooltip
 
@@ -1231,7 +1267,7 @@ class BlastSettingsWidget(QWidget):
         else:
             self.buttonTblastx.setChecked(True)
         self.blastTypeGroup.addButton(self.buttonBlastn)
-        self.blastTypeGroup.addButton(self.buttonBlastn)
+        #self.blastTypeGroup.addButton(self.buttonBlastn)
         self.blastTypeGroup.addButton(self.buttonTblastx)
 
         self.comboMatrix = QComboBox()
@@ -1364,6 +1400,24 @@ class BlastSettingsWidget(QWidget):
         self.close()
 
 
+class SizeSliderWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.slider = QSlider(QtCore.Qt.Horizontal, self)
+        self.buttonSave = QPushButton('Save and exit')
+        self.buttonSave.clicked.connect(self.saveSettings)
+        self.setGeometry(0, 0, 650, 200)
+
+        self.show()
+
+    def saveSettings(self):
+        pass
+
+
+
 class CDSInfoWidget(QWidget):
     def __init__(self, cds):
         super().__init__()
@@ -1374,6 +1428,11 @@ class CDSInfoWidget(QWidget):
         #self.setGeometry(0, 0, 750, 400)
         self.setWindowTitle('CDS Info')
         self.label = QLabel()
+        self.copyNtButton =  QPushButton('Copy nt Sequence to clipboard')
+        self.copyNtButton.clicked.connect(self.copyNtToClip)
+        self.copyAaButton = QPushButton('Copy aa Sequence to clipboard')
+        self.copyAaButton.clicked.connect(self.copyAaToClip)
+
         pos = (self.cds.position, self.cds.position + self.cds.w)
         labelText = '''\
         
@@ -1384,15 +1443,37 @@ class CDSInfoWidget(QWidget):
         Feature Length: {}
         Feature Strand: {}
                     
-        FEATURE QUALIFIERS:\
+        FEATURE QUALIFIERS:\n\
                     '''.format(self.cds.name, self.cds.parent.name,self.cds.type, (str(pos[0]) + ' - ' + str(pos[1])), self.cds.w, self.cds.strand)
         for key in self.cds.qualifiers:
             if key != 'translation':
                 labelText += '\n\t\t{}: {}'.format(key, self.cds.qualifiers[key])
         self.label.setText(labelText)
+
+        self.copyNtButton = QPushButton('Copy nt Sequence to clipboard')
+        self.copyNtButton.clicked.connect(self.copyNtToClip)
+        self.copyAaButton = QPushButton('Copy aa Sequence to clipboard')
+        self.copyAaButton.clicked.connect(self.copyAaToClip)
+
+        layHBox = QHBoxLayout()
+        layHBox.addWidget(self.copyNtButton)
+        if 'translation' in self.cds.qualifiers:
+            layHBox.addWidget(self.copyAaButton)
         layVBox = QVBoxLayout()
         layVBox.addWidget(self.label)
+        layVBox.addLayout(layHBox)
         self.setLayout(layVBox)
+
+    def copyNtToClip(self):
+        cb = QtGui.QGuiApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cdsSeq = str(self.cds.parent.sequence[self.cds.position:(self.cds.position + self.cds.w)])
+        cb.setText(cdsSeq, mode=cb.Clipboard)
+
+    def copyAaToClip(self):
+        cb = QtGui.QGuiApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cb.setText(self.cds.qualifiers['translation'][0], mode = cb.Clipboard)
 
 
 
@@ -1406,12 +1487,23 @@ class MainWidget(QWidget):
     def initUI(self):
         self.setGeometry(0, 0, 300, 200)
 
-        self.scene = GenomeScene()
+
+        self.searchPath = './'
+        self.settings = {
+            'blastPath': '',
+            'displayType': '',
+            'fosmidSize': 0
+        }
+        self.loadConfigFile()
+        print(self.settings)
+
+        self.scene = GenomeScene(self.settings)
         self.view = GenomeViewer(self.scene)
 
-        self.blastPath = ''
-        self.searchPath = './'
-        self.loadConfigFile()
+
+
+
+
 
 
 
@@ -1456,7 +1548,7 @@ class MainWidget(QWidget):
         scramble.triggered.connect(self.scrambleChrms)
 
         debug = QAction('&Debug', self)
-        debug.triggered.connect(self.printWindowSizes)
+        debug.triggered.connect(self.changeChrSize)
 
 
         menuBar = QMenuBar()
@@ -1494,11 +1586,11 @@ class MainWidget(QWidget):
                 for line in configFile:
                     if line[0] == '#':
                         pass
-                    elif line.split('=')[0] == 'blastPath':
-                        self.blastPath = line.split('=')[1].rstrip('\n')
+                    if line.split('=')[0] in self.settings.keys():
+                        print('Found', line.split('=')[0], ', the value is', line.split('=')[1].rstrip('\n'))
+                        self.settings[line.split('=')[0]] = line.split('=')[1].rstrip('\n')
         except Exception:
             pass
-
 
     def center(self):
         qr = self.frameGeometry()
@@ -1545,7 +1637,7 @@ class MainWidget(QWidget):
             self.scene.blastFamilies[0].deleteFamily()
 
     def getNewCanvas(self):
-        newScene = GenomeScene()
+        newScene = GenomeScene(self.settings)
         self.scene = newScene
         self.view.setScene(newScene)
 
@@ -1644,7 +1736,7 @@ class MainWidget(QWidget):
             self.blastBasedOnYPos(chrList, blastSettings)
         else:
             getFastaFile(chrList)
-            runBlastOnSeqs(self.blastPath ,blastSettings, self.scene)
+            runBlastOnSeqs(self.settings['blastPath'] ,blastSettings, self.scene)
 
     def blastBasedOnYPos(self, chrList, blastSettings):
         chrList.sort(key=lambda Chromosome: Chromosome.pos().y())
@@ -1652,7 +1744,7 @@ class MainWidget(QWidget):
         for i in range(0, len(chrList)-1):
             currList = [chrList[i], chrList[i + 1]]
             getFastaFile(currList)
-            runBlastOnSeqs(self.blastPath,  blastSettings, self.scene)
+            runBlastOnSeqs(self.settings['blastPath'],  blastSettings, self.scene)
 
     def loadStyleFile(self):
         styleHandle = QFileDialog.getOpenFileName(self, 'Select Style File', './', 'Text Files (*.txt) ;; All Files (*.*)')
@@ -1702,6 +1794,12 @@ class MainWidget(QWidget):
         for pathPart in splitPath:
             newPath += pathPart + '/'
         self.searchPath = newPath
+
+    def changeChrSize(self):
+        value = QInputDialog.getText(self, 'Input Dialog', 'Input fosmid size')
+        if value[1] == True:
+            self.settings['fosmidSize'] = int(value[0])
+            self.scene.fosmidSizeChanged(self.settings)
 
 
 app = QApplication(sys.argv)
