@@ -38,6 +38,7 @@ def parseOldGenomeFile(filename, genomeScene):
                 cdsLine = line.split('\t')
                 chr = genomeScene.findChromosomeByName(cdsLine[0])
                 chr.sequence = str(cdsLine[8])
+                print(chr.sequence)
 
             else:
                 pass
@@ -257,7 +258,7 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
         os.rename('blastSeqs_flex.blast', 'blastSequences_flex2_original.blast')
     else:
         os.remove('blastSeqs_flex.blast')
-    os.remove('blastSeqs_flex.temp.fasta')
+    #os.remove('blastSeqs_flex.temp.fasta')
 
 
 def parseStyleFile(filename):
@@ -298,7 +299,8 @@ class GenomeScene(QGraphicsScene):
         #self.setSceneRect(0 , 0, 25000, 25000)
 
     def createChromosome(self, w, name, x, y, sequence = None):
-        chr = Chromosome(0, 0, w, name, sequence)
+        goodName = self.checkChromosomeNames(name)
+        chr = Chromosome(0, 0, w, goodName, sequence)
         chr.setPos(x, y)
         self.chrList.append(chr)
         self.addItem(chr)
@@ -331,6 +333,22 @@ class GenomeScene(QGraphicsScene):
         self.chrList.sort(key=lambda Chromosome: Chromosome.pos().y())
         for chr in self.chrList:
             print(chr.name)
+
+    def checkChromosomeNames(self, name):
+        print('checking name')
+        nameList = []
+        for chr in self.chrList:
+            nameList.append(chr.name)
+        if name in nameList:
+            i = 1
+            while i > 0:
+                newName = '{0}_{1}'.format(name, i)
+                if newName not in nameList:
+                    return newName
+                else:
+                    i += 1
+        else:
+            return name
 
     def deleteChromosome(self, name):
         deleteBlastList = []
@@ -579,23 +597,28 @@ class CDS(QGraphicsPolygonItem):
             viewportWidth = int(self.scene().views()[0].viewport().width())
             target = viewportWidth / visibleSceneRectWidth
 
-        if (self.w * target) > 40 and self.polygon() != self.arrowPolygon:
+        if (self.w * target) > 1 and self.polygon() != self.arrowPolygon:
             self.setPolygon(self.arrowPolygon)
             self.prepareGeometryChange()
             self.update()
 
-        elif (self.w * target) > 15 and (self.w * target) < 40 and self.polygon() != self.trianPolygon:
-            self.setPolygon(self.trianPolygon)
-            self.prepareGeometryChange()
-            self.update()
+        else:
+            pass
 
-
+        '''
         elif (self.w * target) < 15 and self.polygon() != self.rectPolygon:
             self.setPolygon(self.rectPolygon)
             self.prepareGeometryChange()
             self.update()
-        else:
-            pass
+        '''
+
+
+        '''
+              elif (self.w * target) > 10 and (self.w * target) < 25 and self.polygon() != self.trianPolygon:
+                  self.setPolygon(self.trianPolygon)
+                  self.prepareGeometryChange()
+                  self.update()
+        '''
 
     def calculateShapes(self, chromosome, pos, type):
 
@@ -1012,13 +1035,17 @@ class BlastInfoWidget(QWidget):
 
         self.settingsButton = QPushButton('Blast Options...')
         self.blastButton = QPushButton('Start Blast')
+        self.selectAllState = True
+        self.selectAllButton = QPushButton('Deselect All')
 
         self.settingsButton.clicked.connect(self.getBlastSettings)
         self.blastButton.clicked.connect(self.performBlast)
+        self.selectAllButton.clicked.connect(self.toggleSelectState)
 
         layHBox = QHBoxLayout()
         layHBox.addWidget(self.settingsButton)
         layHBox.addWidget(self.blastButton)
+        layHBox.addWidget(self.selectAllButton)
 
         layVBox = QVBoxLayout()
         layVBox.addWidget(self.label)
@@ -1051,6 +1078,18 @@ class BlastInfoWidget(QWidget):
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
+    def toggleSelectState(self):
+        if self.selectAllState is True:
+            for i in range(0, self.chrTable.rowCount()):
+                self.chrTable.cellWidget(i, 2).setCheckState(QtCore.Qt.Unchecked)
+            self.selectAllState = False
+            self.selectAllButton.setText('Select All')
+        else:
+            for i in range(0, self.chrTable.rowCount()):
+                self.chrTable.cellWidget(i, 2).setCheckState(QtCore.Qt.Checked)
+            self.selectAllState = True
+            self.selectAllButton.setText('Deselect All')
+
 
 class GBInfoWidget(QWidget):
 
@@ -1073,14 +1112,19 @@ class GBInfoWidget(QWidget):
 
         self.generateGbTable(self.gbTable)
 
+
         self.addButton = QPushButton('Add more sequences...')
         self.parseButton = QPushButton('Parse!')
+        self.selectAllState = True
+        self.selectAllButton = QPushButton('Deselect All')
 
+        self.selectAllButton.clicked.connect(self.toggleSelectState)
         self.addButton.clicked.connect(self.addMoreSequences)
         self.parseButton.clicked.connect(self.clickingParse)
 
 
         layHBox = QHBoxLayout()
+        layHBox.addWidget(self.selectAllButton)
         layHBox.addWidget(self.addButton)
         layHBox.addWidget(self.parseButton)
 
@@ -1121,6 +1165,18 @@ class GBInfoWidget(QWidget):
 
     def clickingParse(self):
         self.getSelectedSeqs()
+
+    def toggleSelectState(self):
+        if self.selectAllState is True:
+            for i in range(0, self.gbTable.rowCount()):
+                self.gbTable.cellWidget(i, 4).setCheckState(QtCore.Qt.Unchecked)
+            self.selectAllState = False
+            self.selectAllButton.setText('Select All')
+        else:
+            for i in range(0, self.gbTable.rowCount()):
+                self.gbTable.cellWidget(i, 4).setCheckState(QtCore.Qt.Checked)
+            self.selectAllState = True
+            self.selectAllButton.setText('Deselect All')
 
     def center(self):
         qr = self.frameGeometry()
