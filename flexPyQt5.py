@@ -52,6 +52,11 @@ def parseGbFile(filename, genomeScene):
             newChrom.createGene(int(feature.position[1]) - int(feature.position[0]), int(feature.position[0]), feature.position[2],
                              feature.id, feature.type, feature.qualifiers)
 
+def parseFastaFile(filename, genomeScene):
+    chromList = gbParser.parseFastaFiles(filename)
+    for chrom in chromList:
+        genomeScene.createChromosome(chrom.length, chrom.name, 0, 0)
+
 
 def parseBlastFile(filename, genomeScene):
     newHits = blastParser.parseBlastFile(filename)
@@ -233,6 +238,7 @@ def runBlastOnSeqs(blastPath, blastSettings, genomeScene):
         if filterBlastParameters['minAln'][1] == 'auto':
             family.removeSmallHits()
         family.removeOwnHits()
+        #family.removeInternalHits()
         if filterBlastParameters['removeAdj'][0] == True:
             family.mergeBlastList(filterBlastParameters['removeAdj'][1], 1.50)
         else:
@@ -277,7 +283,6 @@ def parseStyleFile(filename):
                 newPaintOrder['color'] = [None, None, None]
             paintOrderList.append(newPaintOrder)
         return paintOrderList
-
 
 
 
@@ -574,18 +579,18 @@ class CDS(QGraphicsPolygonItem):
             viewportWidth = int(self.scene().views()[0].viewport().width())
             target = viewportWidth / visibleSceneRectWidth
 
-        if (self.w * target) > 150 and self.polygon() != self.arrowPolygon:
+        if (self.w * target) > 40 and self.polygon() != self.arrowPolygon:
             self.setPolygon(self.arrowPolygon)
             self.prepareGeometryChange()
             self.update()
 
-        elif (self.w * target) > 20 and (self.w * target) < 150 and self.polygon() != self.trianPolygon:
+        elif (self.w * target) > 15 and (self.w * target) < 40 and self.polygon() != self.trianPolygon:
             self.setPolygon(self.trianPolygon)
             self.prepareGeometryChange()
             self.update()
 
 
-        elif (self.w * target) < 20 and self.polygon() != self.rectPolygon:
+        elif (self.w * target) < 15 and self.polygon() != self.rectPolygon:
             self.setPolygon(self.rectPolygon)
             self.prepareGeometryChange()
             self.update()
@@ -1124,10 +1129,10 @@ class GBInfoWidget(QWidget):
         self.move(qr.topLeft())
 
     def addMoreSequences(self):
-        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', './',
-                                                  'Genbank Files (*.genbank *.gb *.gbff *.gbk *.pgbk) ;; All Files (*.*)')
+        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank/Fasta File', './',
+                                                  'Genbank/Fasta Files (*.genbank *.gb *.gbff *.gbk *.pgbk *.fasta *.fa *.fna) ;; All Files (*.*)')
         if plotHandle[0]:
-            newgbList = gbParser.getGbRecords(plotHandle[0])
+            newgbList = gbParser.getRecords(plotHandle[0])
             self.searchPathTrigger.emit(plotHandle[0])
             for item in newgbList:
                 self.gbList.append(item)
@@ -1361,7 +1366,7 @@ class MainWidget(QWidget):
         openPlot = QAction('&Load Plot File', self)
         openPlot.triggered.connect(self.showPlotDialog)
 
-        openGenBank = QAction('&Add sequences from Genbank', self)
+        openGenBank = QAction('&Add Genbank/Fasta sequences', self)
         openGenBank.triggered.connect(self.showGbDialog)
 
         openBlast = QAction('&Load blast file', self)
@@ -1531,10 +1536,10 @@ class MainWidget(QWidget):
             saveFlexFile(self.scene, fileHandle[0])
 
     def showGbDialog(self):
-        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', self.searchPath, 'Genbank Files (*.genbank *.gb *.gbff *.gbk *.pgbk) ;; All Files (*.*)')
+        plotHandle = QFileDialog.getOpenFileNames(self, 'Select Genbank File', self.searchPath, 'Genbank/Fasta Files (*.genbank *.gb *.gbff *.gbk *.pgbk *.fasta *.fa *.fna) ;; All Files (*.*)')
         if plotHandle[0]:
             self.getDirectoryFromPath(plotHandle[0])
-            gbList = gbParser.getGbRecords(plotHandle[0])
+            gbList = gbParser.getRecords(plotHandle[0])
             self.window = GBInfoWidget(gbList)
             self.window.gbInfoTrigger.connect(self.processGenbanks)
             self.window.searchPathTrigger.connect(self.getDirectoryFromPath)
@@ -1542,15 +1547,29 @@ class MainWidget(QWidget):
 
     def processGenbanks(self, queryList):
         seqList = queryList
+        print('processing sequences, sequences to process:', len(seqList))
         #create dictionary
-        seqDict = {}
+        seqDictGb = {}
+        seqDictFasta = {}
+
         for seq in seqList:
-            if seq[0] not in seqDict.keys():
-                seqDict[seq[0]] = [[seq[1], seq[2], seq[3]]]
+            targetDict = None
+            if gbParser.tryFastaFile(seq[0]) is True:
+                print('True')
+                targetDict = seqDictFasta
+            else:
+                targetDict = seqDictGb
+            if seq[0] not in targetDict.keys():
+                targetDict[seq[0]] = [[seq[1], seq[2], seq[3]]]
 
             else:
-                seqDict[seq[0]].append([seq[1], seq[2], seq[3]])
-        chromList = gbParser.parseGbFiles(seqDict.keys(), seqDict)
+                targetDict[seq[0]].append([seq[1], seq[2], seq[3]])
+
+
+        chromListGb = gbParser.parseGbFiles(seqDictGb.keys(), seqDictGb)
+        chromListFasta = gbParser.parseFastaFiles(seqDictFasta.keys(), seqDictFasta)
+        chromList = chromListGb + chromListFasta
+        print('Genbanks:', len(seqDictGb), '+ Fastas:', len(seqDictFasta), '=', len(chromList))
         for chrom in chromList:
             newChrom = self.scene.createChromosome(chrom.length, chrom.name, 0, 0, chrom.seq)
             for feature in chrom.features:

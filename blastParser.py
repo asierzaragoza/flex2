@@ -20,20 +20,22 @@ class BlastFamily():
     def removeOwnHits(self):
         cleanList = []
         tupleList = []
+        ownHits = 0
         for BlastHit in self.blastList:
             for tuple in tupleList:
                 if set(BlastHit.seq1pos + BlastHit.seq2pos) == set(tuple):
+                    ownHits += 1
                     break
             else:
                 cleanList.append(BlastHit)
                 tupleList.append((BlastHit.seq1pos + BlastHit.seq2pos))
+
+        print('{0} duplicate hits removed, family now contains {1} hits'.format(ownHits, len(cleanList)))
         self.blastList = cleanList
 
     def _equalize(self):
         for BlastHit in self.blastList:
             if BlastHit.parents[0] != self.parents[0]:
-                print('Seq1Pos',BlastHit.seq1pos)
-                print('Seq2Pos', BlastHit.seq2pos)
                 newSeq2 = BlastHit.seq1pos
                 newSeq1 = BlastHit.seq2pos
                 BlastHit.parents = self.parents
@@ -55,6 +57,17 @@ class BlastFamily():
             self.blastList.sort(key= lambda BlastHit : BlastHit.seq1pos)
         elif sortBy == 'matchLen':
             self.blastList.sort(key = lambda BlastHit: BlastHit.matchLen)
+
+    def rearrangeBlastList(self):
+        #transform all the reverse blasts into normal ones
+        for blastHit in self.blastList:
+            if BlastHit.seq1pos[0] > BlastHit.seq1pos[1]:
+                newBlastPos = (BlastHit.seq1pos[1], BlastHit.seq1pos[0])
+                BlastHit.seq1pos = newBlastPos
+
+            if BlastHit.seq2pos[0] > BlastHit.seq2pos[1]:
+                newBlastPos = (BlastHit.seq2pos[1], BlastHit.seq2pos[0])
+                BlastHit.seq2pos = newBlastPos
 
     def mergeBlastList(self, threshold, mult):
         #Initialize variables + Subthreshold (contains the merging parameters)
@@ -275,6 +288,81 @@ class BlastFamily():
                 curatedList.append(BlastHit)
         self.blastList = curatedList
         print('blasts over the threshold', minAln, ':', i)
+
+    def binBlastsByLength(self, targetLength):
+
+        totalLength = 0
+
+        for blastHit in self.blastList:
+            totalLength += blastHit.matchLen
+
+
+        self.sortHits('matchLen')
+        binList = [[]]
+        for blastHit in self.blastList:
+            number = round(blastHit.matchLen / targetLength)
+
+            try:
+                binList[number].append(blastHit)
+            except IndexError:
+                target = number - (len(binList) -1)
+                for i in range(0, target):
+                    binList.append([])
+                binList[number].append(blastHit)
+
+        for i, list in enumerate(binList):
+            if len(binList[i]) < 1:
+                pass
+            else:
+                totalBinLength = 0
+                for blastHit in binList[i]:
+                    totalBinLength += blastHit.matchLen
+                #print('{0} - {1}: {2} blastHits, {3} matchLen'.format(targetLength*i, targetLength*(i+1), len(binList[i]), round(1/(totalBinLength/(len(binList[i]) * totalLength)), 3)))
+                print('{0}\t{1}'.format(targetLength*i,round(1/(totalBinLength/(len(binList[i]) * totalLength)), 3)))
+
+
+    def removeInternalHits(self):
+        self._equalize()
+        self.blastList.sort(key=lambda BlastHit: BlastHit.matchLen)
+        cleanList = []
+        removedBlasts = 0
+
+        for blastHit in self.blastList:
+            blastHitIndex = self.blastList.index(blastHit)
+            blastHitpos1 = blastHit.seq1pos
+            if blastHitpos1[1] - blastHitpos1[0] < 0:
+                blastHitpos1 = (blastHitpos1[1], blastHitpos1[0])
+            blastHitpos2 = blastHit.seq2pos
+            if blastHitpos2[1] - blastHitpos2[0] < 0:
+                blastHitpos2 = (blastHitpos2[1], blastHitpos2[0])
+
+            isInternal = False
+            for i in range(len(self.blastList)-1, blastHitIndex, -1):
+                referenceBlastHit = self.blastList[i]
+                refBlastHitpos1 = referenceBlastHit.seq1pos
+                if refBlastHitpos1[1] - refBlastHitpos1[0] < 0:
+                    refBlastHitpos1 = (refBlastHitpos1[1], refBlastHitpos1[0])
+                refBlastHitpos2 = referenceBlastHit.seq2pos
+                if refBlastHitpos2[1] - refBlastHitpos2[0] < 0:
+                    refBlastHitpos2 = (refBlastHitpos2[1], refBlastHitpos2[0])
+
+                if blastHitpos1[0] > refBlastHitpos1[0] and blastHitpos1[1] < refBlastHitpos1[1]:
+                    removedBlasts += 1
+                    isInternal = True
+                    break
+                elif blastHitpos2[0] > refBlastHitpos2[0] and blastHitpos2[1] < refBlastHitpos2[1]:
+                    removedBlasts += 1
+                    isInternal = True
+                    break
+            if isInternal is False:
+                cleanList.append(blastHit)
+        self.blastList = cleanList
+        print('removed Blasts:', removedBlasts, 'blasts in cleanList:', len(cleanList))
+
+
+
+
+
 
 class BlastHit():
     def __init__(self, line):

@@ -134,17 +134,50 @@ for gbRecord in gbFiles:
     print(str(newFosmid.returnFeatureTypes()))
 '''
 
-def getGbRecords(filenames):
+def getRecords(filenames):
     gbFiles = []
     for file in filenames:
-        with open(file, 'r') as filehandle:
-            inputFile = SeqIO.parse(filehandle, 'genbank')
-            for record in inputFile:
-                gbFiles.append((file,record.name, record.id, len(record.seq)))
+        print(file)
+
+        if tryFastaFile(file) is False:
+            inputFile = SeqIO.parse(file, 'genbank')
+            print('opening as genbank')
+        else:
+            inputFile = SeqIO.parse(file, 'fasta')
+            print('opening as fasta')
+
+        for record in inputFile:
+            print(file,record.name, record.id, len(record.seq))
+            gbFiles.append((file,record.name, record.id, len(record.seq)))
     return gbFiles
 
 
+def parseFastaFiles(filenames, exceptionDict = None):
+    print('no of filenames:', len(filenames))
+    fastaRecordList = []
+    for file in filenames:
+        with open(file, 'r') as filehandle:
+            print('processing file')
+            inputFile = SeqIO.parse(filehandle, 'fasta')
+            for record in inputFile:
+                print('processing record')
+                for query in exceptionDict[file]:
+                    if record.name == query[0] and len(record.seq) == int(query[2]):
+                        fastaRecordList.append(record)
+                    else:
+                        print('match not found!')
+                        print(record.name, query[0])
+                        print(len(record.seq), int(query[2]))
+    fosmidList = []
+    print(len(fastaRecordList))
+    for fastaRecord in fastaRecordList:
+        newFosmid = Fosmid(name=fastaRecord.name, length=len(fastaRecord.seq), seq=fastaRecord.seq)
+        fosmidList.append(newFosmid)
+    return fosmidList
+
+
 def parseGbFiles(filenames, exceptionDict = None):
+
     gbRecordList = []
     for file in filenames:
         with open(file, 'r') as filehandle:
@@ -203,6 +236,19 @@ def parseGbFile(filename):
     return fosmidList
 
 
+def tryFastaFile(filename):
+    try:
+        trial = SeqIO.parse(filename, 'fasta')
+        nOfRecords = 0
+        for record in trial:
+            print(record.name)
+            nOfRecords += 1
+        if nOfRecords > 0:
+            return True
+        else:
+            return False
+    except Exception:
+        return False
 
 
 
