@@ -490,8 +490,8 @@ class Chromosome(QGraphicsRectItem):
             xdiff = QGraphicsSceneMouseEvent.scenePos().x() - QGraphicsSceneMouseEvent.lastScenePos().x()
             ydiff = QGraphicsSceneMouseEvent.scenePos().y() - QGraphicsSceneMouseEvent.lastScenePos().y()
 
-            chromosomeX = self.pos().x() + xdiff
-            chromosomeY = self.pos().y() + ydiff
+            chromosomeX = int(self.pos().x() + xdiff)
+            chromosomeY = int(self.pos().y() + ydiff)
             self.setPos(QtCore.QPoint(chromosomeX, chromosomeY))
             for blastFamily in self.blastList:
                 blastFamily.updatePolyPos()
@@ -543,8 +543,8 @@ class CDS(QGraphicsPolygonItem):
         else:
             self.type = type
         self.style = None
-        x = chromosome.pos().x() + int(pos)
-        y = chromosome.pos().y() - ((self.h - self.parent.h)/4)
+        x = int(chromosome.pos().x() + int(pos))
+        y = int(chromosome.pos().y() - ((self.h - self.parent.h)/4))
         if self.type == 'repeat_region':
             shapes = self.calculateShapes(self.parent, pos, type = 'repeat')
         elif self.type == 'CDS':
@@ -579,7 +579,7 @@ class CDS(QGraphicsPolygonItem):
 
 
     def moveCDS(self, xdiff, ydiff):
-        self.setPos(QtCore.QPoint(self.pos().x() + xdiff, self.pos().y() + ydiff))
+        self.setPos(QtCore.QPoint(int(self.pos().x() + xdiff),int(self.pos().y() + ydiff)))
 
     def mousePressEvent(self, QGraphicsSceneMouseEvent):
         self.parent.dragged = True
@@ -825,10 +825,10 @@ class BlastPolygon(QGraphicsPolygonItem):
         self.mismatches = mismatches
         self.brush = QtGui.QBrush(QtCore.Qt.darkRed)
 
-        point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, self.chrom1.pos().y())
-        point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, self.chrom2.pos().y())
-        point3 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2start, self.chrom2.pos().y())
-        point4 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1start, self.chrom1.pos().y())
+        point1 = QtCore.QPoint(int(self.chrom1.pos().x() + self.pos1end), int(self.chrom1.pos().y()))
+        point2 = QtCore.QPoint(int(self.chrom2.pos().x() + self.pos2end), int(self.chrom2.pos().y()))
+        point3 = QtCore.QPoint(int(self.chrom2.pos().x() + self.pos2start), int(self.chrom2.pos().y()))
+        point4 = QtCore.QPoint(int(self.chrom1.pos().x() + self.pos1start), int(self.chrom1.pos().y()))
         polygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
         super().__init__(polygon)
@@ -840,15 +840,15 @@ class BlastPolygon(QGraphicsPolygonItem):
 
         #Fixed the pen issue!
         pen = QtGui.QPen()
-        pen.setWidth(0.5)
+        pen.setWidth(1)
         pen.setCosmetic(True)
         self.setPen(pen)
 
     def calculatePolygon(self):
-        point1 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1end, self.chrom1.pos().y())
-        point2 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2end, self.chrom2.pos().y())
-        point3 = QtCore.QPoint(self.chrom2.pos().x() + self.pos2start, self.chrom2.pos().y())
-        point4 = QtCore.QPoint(self.chrom1.pos().x() + self.pos1start, self.chrom1.pos().y())
+        point1 = QtCore.QPoint(int(self.chrom1.pos().x() + self.pos1end), int(self.chrom1.pos().y()))
+        point2 = QtCore.QPoint(int(self.chrom2.pos().x() + self.pos2end), int(self.chrom2.pos().y()))
+        point3 = QtCore.QPoint(int(self.chrom2.pos().x() + self.pos2start), int(self.chrom2.pos().y()))
+        point4 = QtCore.QPoint(int(self.chrom1.pos().x() + self.pos1start), int(self.chrom1.pos().y()))
         polygon = QtGui.QPolygonF((point1, point2, point3, point4))
         self.setPolygon(polygon)
 
