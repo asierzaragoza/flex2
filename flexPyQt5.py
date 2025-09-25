@@ -25,8 +25,6 @@ def parseOldGenomeFile(filename, genomeScene):
                     seqInfo = sequence.split('=')
                     genomeScene.createChromosome(int(seqInfo[1].rstrip(' ')), seqInfo[0].strip(' '), 0, 0)
             elif len(line.split('\t')) > 8 and 'source' not in line.split('\t')[7]:
-
-
                 cdsLine = line.split('\t')
                 qualDict = {}
                 qualDict['product'] = cdsLine[7]
@@ -465,9 +463,9 @@ class GenomeViewer(QGraphicsView):
 
 class Chromosome(QGraphicsRectItem):
     def __init__(self, x, y, w, h, name, sequence=None):
-        self.h = h
-        self.w = w
-        super().__init__(x, y, self.w, self.h)
+        self.h = int(h)
+        self.w = int(w)
+        super().__init__(int(x), int(y), self.w, self.h)
         self.setPos(QtCore.QPoint(x, y))
         self.ItemIsMovable = True
         self.ItemIsSelectable = True
@@ -530,8 +528,8 @@ class Chromosome(QGraphicsRectItem):
 
 class CDS(QGraphicsPolygonItem):
     def __init__(self, chromosome, w, pos, strand, name, type, qualifiers):
-        self.h = chromosome.h * 2
-        self.w = w
+        self.h = int(chromosome.h * 2)
+        self.w = int(w)
         self.position = pos
         self.parent = chromosome
         self.qualifiers = qualifiers
@@ -644,9 +642,9 @@ class CDS(QGraphicsPolygonItem):
         if type == 'repeat':
             # Get Rectangle Shape
             point1 = QtCore.QPoint(self.w, self.h * -1)
-            point2 = QtCore.QPoint(self.w, (self.h / -4))
-            point3 = QtCore.QPoint(0, (self.h / -4))
-            point4 = QtCore.QPoint(0, self.h * -1)
+            point2 = QtCore.QPoint(self.w, int(self.h / -4))
+            point3 = QtCore.QPoint(0, int(self.h / -4))
+            point4 = QtCore.QPoint(0, int(self.h * -1))
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
             return [rectPolygon, None, None]
@@ -654,8 +652,8 @@ class CDS(QGraphicsPolygonItem):
         elif type == 'misc':
             # Get Rectangle Shape
             point1 = QtCore.QPoint(self.w, self.h)
-            point2 = QtCore.QPoint(self.w, self.h * 2)
-            point3 = QtCore.QPoint(0, self.h * 2)
+            point2 = QtCore.QPoint(self.w, int(self.h * 2))
+            point3 = QtCore.QPoint(0, int(self.h * 2))
             point4 = QtCore.QPoint(0, self.h)
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
@@ -664,42 +662,42 @@ class CDS(QGraphicsPolygonItem):
 
         else:
             # Get Rectangle Shape
-            point1 = QtCore.QPoint(self.w , self.h / -4)
+            point1 = QtCore.QPoint(self.w , int(self.h / -4))
             point2 = QtCore.QPoint(self.w, self.h)
             point3 = QtCore.QPoint(0, self.h)
-            point4 = QtCore.QPoint(0, self.h/-4)
+            point4 = QtCore.QPoint(0, int(self.h/-4))
             rectPolygon = QtGui.QPolygonF((point1, point2, point3, point4))
 
             # Get triangle shape
             if self.strand == '+':
-                point1 = QtCore.QPoint(self.w, (self.h / 2.5))
-                point2 = QtCore.QPoint(0, (self.h / -4))
+                point1 = QtCore.QPoint(self.w, int(self.h / 2.5))
+                point2 = QtCore.QPoint(0, int(self.h / -4))
                 point3 = QtCore.QPoint(0, self.h)
                 trianPolygon = QtGui.QPolygonF((point1, point2, point3))
             else:
-                point1 = QtCore.QPoint(0, (self.h / 2.5))
-                point2 = QtCore.QPoint(self.w, (self.h / -4))
+                point1 = QtCore.QPoint(0, int(self.h / 2.5))
+                point2 = QtCore.QPoint(self.w, int(self.h / -4))
                 point3 = QtCore.QPoint(self.w, self.h)
                 trianPolygon = QtGui.QPolygonF((point1, point2, point3))
 
             # Get Arrow Shape
             if self.strand == '+':
-                point1 = QtCore.QPoint(self.w, (self.h / 2.5))
-                point2 = QtCore.QPoint((self.w * 0.66), self.h)
-                point3 = QtCore.QPoint((self.w * 0.66), (self.parent.h * 1.5))
-                point4 = QtCore.QPoint(0, (self.parent.h * 1.5))
+                point1 = QtCore.QPoint(self.w, int(self.h / 2.5))
+                point2 = QtCore.QPoint(int(self.w * 0.66), self.h)
+                point3 = QtCore.QPoint(int(self.w * 0.66), int(self.parent.h * 1.5))
+                point4 = QtCore.QPoint(0, int(self.parent.h * 1.5))
                 point5 = QtCore.QPoint(0,0)
-                point6 = QtCore.QPoint((self.w * 0.66), 0)
-                point7 = QtCore.QPoint((self.w * 0.66), (self.h / -4))
+                point6 = QtCore.QPoint(int(self.w * 0.66), 0)
+                point7 = QtCore.QPoint(int(self.w * 0.66), int(self.h / -4))
                 arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
             else:
-                point1 = QtCore.QPoint(0, (self.h / 2.5))
-                point2 = QtCore.QPoint((self.w * 0.33), self.h)
-                point3 = QtCore.QPoint((self.w * 0.33), (self.parent.h * 1.5))
-                point4 = QtCore.QPoint(self.w, (self.parent.h * 1.5))
+                point1 = QtCore.QPoint(0, int(self.h / 2.5))
+                point2 = QtCore.QPoint(int(self.w * 0.33), self.h)
+                point3 = QtCore.QPoint(int(self.w * 0.33), int(self.parent.h * 1.5))
+                point4 = QtCore.QPoint(self.w, int(self.parent.h * 1.5))
                 point5 = QtCore.QPoint(self.w, 0)
-                point6 = QtCore.QPoint((self.w * 0.33), 0)
-                point7 = QtCore.QPoint((self.w * 0.33), (self.h / -4))
+                point6 = QtCore.QPoint(int(self.w * 0.33), 0)
+                point7 = QtCore.QPoint(int(self.w * 0.33), int(self.h / -4))
                 arrowPolygon = QtGui.QPolygonF((point1, point2, point3, point4, point5, point6, point7))
 
             return [rectPolygon, trianPolygon, arrowPolygon]

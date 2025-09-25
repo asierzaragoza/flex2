@@ -88,7 +88,7 @@ class Feature():
         self.type = gbFeatList.type
         self.sequence = None
         #Get position
-        self.position = [gbFeatList.location.start.position, gbFeatList.location.end.position, gbFeatList.location.strand]
+        self.position = [gbFeatList.location.start, gbFeatList.location.end, gbFeatList.location.strand]
         if self.position[2] == -1:
             self.position[2] = '-'
         elif self.position[2] == 1:
@@ -123,7 +123,7 @@ for gbRecord in gbFiles:
     featureList = gbRecord.features
     for rawFeature in featureList:
         newFeature = Feature(newFosmid, rawFeature)
-        newFeature.getFeatureSequence(str(gbRecord.seq[rawFeature.location.start.position:rawFeature.location.end.position]))
+        newFeature.getFeatureSequence(str(gbRecord.seq[rawFeature.location.start:rawFeature.location.end]))
         newFosmid.addFeature(newFeature)
 
     print(len(newFosmid.features))
@@ -202,7 +202,7 @@ def parseGbFiles(filenames, exceptionDict = None):
                 continue
             else:
                 newFeature.getFeatureSequence(
-                    str(gbRecord.seq[rawFeature.location.start.position:rawFeature.location.end.position]))
+                    str(gbRecord.seq[rawFeature.location.start:rawFeature.location.end]))
                 newFosmid.addFeature(newFeature)
 
         newFosmid.purgeGeneList()
@@ -226,7 +226,7 @@ def parseGbFile(filename):
         for rawFeature in featureList:
             newFeature = Feature(newFosmid, rawFeature)
             newFeature.getFeatureSequence(
-                str(gbRecord.seq[rawFeature.location.start.position:rawFeature.location.end.position]))
+                str(gbRecord.seq[rawFeature.location.start:rawFeature.location.end]))
             newFosmid.addFeature(newFeature)
 
         newFosmid.purgeGeneList()
